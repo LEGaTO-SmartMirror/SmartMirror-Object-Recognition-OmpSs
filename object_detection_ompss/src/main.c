@@ -31,6 +31,9 @@ int main(int argc, char** argv)
 	float minFrameTime = 1000000.0f / maxFPS;
 	int frameCounter = 0;
 	float frameCounterAcc = 0.0f;
+	double after = 0.0f;    // more accurate time measurements
+	double currUSec = 0.0f;
+	double currMSec = 0.0f;
 
 	/*  ===== Input Argument =====  */
 	int camSource;
@@ -51,6 +54,7 @@ int main(int argc, char** argv)
 	detection* pDets1 = NULL;
 	int defaultDetectionsCount = 30; // this is speculated, only known at run time, and changes value at each detection (nboxes)
 	int nBoxes = 0;
+	int lastNBoxes = 0;
 	int trackedNBoxes = 0;
 	float* pProb;
 	float* pBBox;
@@ -179,13 +183,39 @@ int main(int argc, char** argv)
 		}
 
 
-#pragma oss task out(pData0[0; inSDataLength]) in(cap) node(0) label("get_image_from_stream_resize_task")
+#pragma oss task in(pDets0) in(lastNBoxes) in(ppNames) node(0)
 		{
-			inS0 = get_image_from_stream_resize(cap, IMAGE_WIDTH, IMAGE_HEIGHT, CHANNELS, &pInImg, 0);
-			memcpy(pData0, inS0.data, inSDataLength * sizeof(float));
-			free_image(inS0);
-			release_mat(&pInImg);
-		}
+			updateTrackers(pDets0, nBoxes, THRESH, &pTrackedDets, &trackedNBoxes, IMAGE_WIDTH, IMAGE_HEIGHT);
+			//_free_detections(pDets0, nBoxes);
+			nBoxes = 0;
+
+			printf("{\"DETECTED_OBJECTS\": [");
+
+			if (trackedNBoxes > 0)
+			{
+				char itemstring[200];
+				printf("{\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
+					pTrackedDets[0].trackerID, ppNames[pTrackedDets[0].objectTyp], pTrackedDets[0].bbox.x,
+					pTrackedDets[0].bbox.y, pTrackedDets[0].bbox.w, pTrackedDets[0].bbox.h);
+				int i = 1;
+				for (i = 1; i < trackedNBoxes; ++i)
+				{
+					printf(", {\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
+						pTrackedDets[i].trackerID, ppNames[pTrackedDets[i].objectTyp], pTrackedDets[i].bbox.x,
+						pTrackedDets[i].bbox.y, pTrackedDets[i].bbox.w, pTrackedDets[i].bbox.h);
+				}
+
+
+				trackedNBoxes = 0;
+				_assert(pTrackedDets);
+				free(pTrackedDets);			
+			}
+
+			printf("]}\n");
+			fflush(stdout);
+
+		} // end of task
+
 
 #pragma oss task in(pNet) in(pInS1) in(classes) in(pData1[0;inSDataLength])  \
         out(nBoxes) out(pBBox[0;4*defaultDetectionsCount]) \
@@ -226,10 +256,17 @@ int main(int argc, char** argv)
 			_free_detections(pDets1, nBoxesTask);
 		} // end of task
 
-
+#pragma oss task out(pData0[0; inSDataLength]) in(cap) node(0) label("get_image_from_stream_resize_task")
+		{
+			inS0 = get_image_from_stream_resize(cap, IMAGE_WIDTH, IMAGE_HEIGHT, CHANNELS, &pInImg, 0);
+			memcpy(pData0, inS0.data, inSDataLength * sizeof(float));
+			free_image(inS0);
+			release_mat(&pInImg);
+		}
 
 
 #pragma oss taskwait  
+
 
 		for (size_t i = 0; i < inSDataLength; ++i)
 			pData1[i] = pData0[i];
@@ -264,44 +301,15 @@ int main(int argc, char** argv)
 
 			for (size_t l = 0; l < classes; ++l)
 				pDets0[i].prob[l] = pProb[kk + l];
-
 			jj += 4;
 			kk += classes;
 		}
 
-		updateTrackers(pDets0, nBoxes, THRESH, &pTrackedDets, &trackedNBoxes, IMAGE_WIDTH, IMAGE_HEIGHT);
-		//_free_detections(pDets0, nBoxes);
-		nBoxes = 0;
+		lastNBoxes = nBoxes;
 
-		printf("{\"DETECTED_OBJECTS\": [");
-
-		if (trackedNBoxes > 0)
-		{
-			char itemstring[200];
-			printf("{\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
-				   pTrackedDets[0].trackerID, ppNames[pTrackedDets[0].objectTyp], pTrackedDets[0].bbox.x,
-				   pTrackedDets[0].bbox.y, pTrackedDets[0].bbox.w, pTrackedDets[0].bbox.h);
-			int i = 1;
-			for (i = 1; i < trackedNBoxes; ++i)
-			{
-				printf(", {\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
-					   pTrackedDets[i].trackerID, ppNames[pTrackedDets[i].objectTyp], pTrackedDets[i].bbox.x,
-					   pTrackedDets[i].bbox.y, pTrackedDets[i].bbox.w, pTrackedDets[i].bbox.h);
-			}
-
-
-			trackedNBoxes = 0;
-			_assert(pTrackedDets);
-			free(pTrackedDets);
-			
-		}
-
-		printf("]}\n");
-		fflush(stdout);
-
-		double after = get_time_point();    // more accurate time measurements
-		double currUSec = (after - before);
-		double currMSec = currUSec * 0.001;
+		after = get_time_point();    // more accurate time measurements
+		currUSec = (after - before);
+		currMSec = currUSec * 0.001;
 
 		if (currUSec < minFrameTime)
 		{
