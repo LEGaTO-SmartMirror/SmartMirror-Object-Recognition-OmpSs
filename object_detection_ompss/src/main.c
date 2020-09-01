@@ -15,11 +15,9 @@
 #define CHANNELS 		3
 #define IMAGE_WIDTH  	416
 #define IMAGE_HEIGHT  	416
-#define CFG_FILE		"./data/yolov4-tiny.cfg"
-#define WEIGHT_FILE		"./data/yolov4-tiny.weights"
-#define NAMES_FILE		"./data/coco.names"
-#define VIDEO_DIR       "./data/test2.mp4"
-#define FROM_CAM        0
+#define CFG_FILE		"../data/yolov4-tiny.cfg"
+#define WEIGHT_FILE		"../data/yolov4-tiny.weights"
+#define NAMES_FILE		"../data/coco.names"
 
 int main(int argc, char** argv)
 {
