@@ -1,0 +1,394 @@
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <inttypes.h>
+
+#include "common.h"
+
+
+#include <nanos6/debug.h>
+#include <nanos6/cluster.h>
+
+//#define classes         80 // 80 item in coco.names file 
+#define thresh  		.4
+#define hier_thresh 	.4
+#define NFRAMES 		3
+#define image_width  	416
+#define image_height  	416
+#define cfg_file		"./data/enet-coco.cfg"
+#define weight_file		"./data/enetb0-coco_final.weights"
+#define names_file		"./data/coco.names"
+#define VIDEODIR        "./data/test2.mp4"
+#define FROMCAM         0
+
+int main(int argc, char **argv) {
+
+    struct timeval tic, toc;
+    static volatile int flag_exit = 0;
+
+    double before = 0.0f;
+    float maxFPS = 30.0f;
+    float minFrameTime = 1000000.0f / 5.0f;
+    //mat_cv *in_img;
+    image det_s;
+    //image *in_s = (image *)_lmalloc(sizeof(image));ls /d
+    cap_cv *cap;
+    network *net ;// = (network *)_lmalloc(sizeof(network), "Network"); // this is a complex struct  
+    image* in_s1; 
+
+    char **names = NULL;
+    TrackedObject *tracked_dets = NULL;
+    int framecounter = 0;
+    float framecounteracc = 0.0f; 
+    //detection *dets = (detection *)_lmalloc(sizeof(detection));	
+    int nboxes = 0;
+    int *nboxesPtr = &nboxes;
+    int tmp_nboxes = 0;
+    int tracked_nboxes = 0;
+    int defaultDetectionsCount = 30; // this is speculated, only known at run time, and changes value at each detection (nboxes)
+    int lclasses = 0;
+
+    int in_s_data_length = image_height*image_width*NFRAMES;
+
+   
+    float *PROB;
+    float *BBOX;
+
+    /** INIT OF EVERYTHING 
+      /   First check for config on std in */
+    /*if(argc > 1){
+      chdir(argv[1]);
+      }*/
+    /** Print some debug infos */
+    /*char cwd[100];
+    getcwd(cwd,sizeof(cwd));
+    printf("Current working dir: %s\n", cwd);
+    char result[ 100 ];
+    readlink( "/proc/self/exe", result, sizeof(result)-1);
+    printf("readlink dir: %s\n", result);*/
+
+    /** Calculate the amount of classes by counting the given names */
+    /** We kow it is 80 already **/
+    size_t classes = 80;
+    //names = get_labels(names_file); // memory issue 
+    //while (names[classes] != NULL) {
+    //    classes++;
+       // printf("classes: %d names[$d] %s \n", classes, classes , names[classes]);
+  //  }
+
+
+    /** Initialize the network
+      / THIS NEEDS TO BE EXECUTED ON THE SECOND XAVIER */
+    #pragma oss task out(net) out(in_s1) node(1) label("init_network_task")
+    {
+        net = load_network_custom(cfg_file, weight_file, 1, 1);
+        set_batch_network(net, 1);
+        fuse_conv_batchnorm(*net);
+        calculate_binary_weights(*net);
+	
+	in_s1 = (image*)_malloc(sizeof(image), "in_s1");
+        in_s1->w = image_width;
+        in_s1->h = image_height;
+        in_s1->c = NFRAMES;
+	in_s1->data = (float *)_malloc(in_s_data_length * sizeof(float), "in_s1.data.task");
+	
+    }
+   
+    /** open image source */
+    char cap_str[200];
+
+    /** If a webcam is directly used, open it with opencv */
+    int CAM_SOURCE = atoi(argv[1]); 
+    if(CAM_SOURCE) {
+        printf("Using CAM Source. \n");
+        cap = get_capture_webcam(atoi(argv[2]));
+    }else {
+        printf("Using VIDEO Source. \n");
+        cap = get_capture_video_stream(argv[2]);
+    }
+
+    /** Check if video capture is opened */
+    if (!cap) {
+        error("Couldn't connect to webcam.\n");
+    }
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+
+    /** If detection is to fast we need a break */
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
+    char message[50];
+    /** Initialize Kalmann and Hungarian filter */
+    init_trackers(classes); 
+
+    mat_cv *in_img; // = (mat_cv*)malloc(sizeof(mat_cv), "mat_cv"); // TODO: use malloc
+    // _assert(in_img);
+    detection *dets0 = NULL;
+    detection *dets1 = NULL;
+    image in_s0;
+
+    float *_data0, *_data1;
+    int itr = 0;
+
+    PROB            = (float *)_lmalloc(defaultDetectionsCount * classes * sizeof(float), "PROB");
+    BBOX            = (float *)_lmalloc(defaultDetectionsCount * 4 * sizeof(float),   "BBOX");
+    
+  
+   
+    for(size_t i = 0; i < 4 * defaultDetectionsCount; ++i)
+    {
+        BBOX[i] = 0.0f;
+    }   
+    for(size_t i = 0; i < classes * defaultDetectionsCount; ++i)
+    {
+        PROB[i] = 0.0f;
+    }
+    
+    uint64_t alloc_size0 =  3*defaultDetectionsCount*sizeof(int) + 
+                            defaultDetectionsCount*sizeof(float) + 
+                            defaultDetectionsCount * classes * sizeof(float) +
+                            defaultDetectionsCount * 4 * 2;
+
+    _data0 = (float *)_lmalloc(in_s_data_length * sizeof(float), "data_struct_0");
+    _data1 = (float *)_lmalloc(in_s_data_length * sizeof(float), "data_struct_1");
+
+    // intial iteration 
+    in_s0 = get_image_from_stream_resize(cap, image_width, image_height, NFRAMES, &in_img, 0);
+    for(size_t i = 0; i < in_s_data_length; ++i) { _data1[i] = in_s0.data[i]; }
+
+    free_image(in_s0);
+    release_mat(&in_img);
+
+    #pragma oss taskwait
+
+    while (1) 
+    {
+        before = get_time_point();
+            //gettimeofday(&tic, NULL);
+                // check stdin for a new maxFPS amount
+                /*(STDIN_FILENO, &readfds);
+                if (select(1, &readfds, NULL, NULL, &timeout)) 	{
+                scanf("%s", message);
+                maxFPS = atof(message);
+                minFrameTime = 1000000.0 / maxFPS;
+                }*/
+
+            // if no FPS are needed and maxFPS equals 0, wait and start from the beginning
+             /* if (maxFPS == 0) {
+                usleep(1 * 1000000);
+                printf("{\"SLeeeeep OBJECT_DET_FPS\": 0.0}\n");
+                fflush(stdout);
+                continue;
+            }*/              
+        
+        
+        #pragma oss task out(_data0[0; in_s_data_length]) in(cap) node(0) label("get_image_from_stream_resize_task")
+        {
+            in_s0 = get_image_from_stream_resize(cap, image_width, image_height, NFRAMES, &in_img, 0);
+            memcpy(_data0, in_s0.data, in_s_data_length * sizeof(float));
+            free_image(in_s0);
+            release_mat(&in_img);
+        }
+
+        
+        // printf("--------------------Before Predction----------------\n");
+        #pragma oss task \
+        in(net) in(in_s1) in(classes)   \
+        in(_data1[0;in_s_data_length])  \
+        out(nboxes) out(BBOX[0;4*defaultDetectionsCount]) \
+        out(PROB[0;defaultDetectionsCount*classes]) \
+        label("get_fetch_task") node(1)
+        {
+       
+            //printf("--------------------Start Predction----------------\n");
+
+            int in_s_data_length = image_height*image_width*NFRAMES;      
+            
+            for(size_t i = 0; i < in_s_data_length; ++i) { in_s1->data[i] = _data1[i]; }
+
+            network_predict_image(net, *in_s1);
+          
+            int _nboxes = 0;
+
+            detection *dets1 = get_network_boxes(net, image_width, image_height, thresh, hier_thresh, 0, 1, &_nboxes, 0);			
+            
+            //float nms = .60f;    // 0.4F
+            //if (nms) 
+            //   do_nms_sort(dets1, _nboxes, classes, nms);  
+            //layer l = net->layers[net->n - 1];
+           // lclasses = l.classes;
+            // printf("copying actual nboxes [%d] of defaultDetectionsCount (estimated), [%ld]  classes [%ld] lclasses %d \n", 
+                    //nboxes,defaultDetectionsCount, classes, lclasses);
+                    //printf("Start Copying inside task\n");
+
+            nboxes = _nboxes;
+
+            size_t j = 0, k = 0;
+            box _bbox;
+            for(size_t i = 0; i < _nboxes; ++i)
+            {
+                _bbox = dets1[i].bbox;
+                BBOX[j]   = _bbox.x;
+                BBOX[j+1] = _bbox.y;
+                BBOX[j+2] = _bbox.w;
+                BBOX[j+3] = _bbox.h;
+
+                //memcpy(&PROB[k], dets1[i].prob, classes*sizeof(float));
+                for(size_t l = 0; l < classes; ++l)
+                {
+                    PROB[k + l] = dets1[i].prob[l];
+                }
+                j += 4;
+                k += classes;
+            }
+            //printf("End Copying inside task\n");
+        
+            _free_detections(dets1, _nboxes); 
+           //_assert(in_s1.data);
+            //free(in_s1.data);
+      
+        } // end of task
+
+ 
+        #pragma oss taskwait  
+
+        tmp_nboxes = nboxes;
+
+        for(size_t i = 0; i < in_s_data_length; ++i)
+            _data1[i] = _data0[i];
+    
+        _assert(nboxes > 0);
+        dets0 = (detection *)_malloc(nboxes * sizeof(detection), "dets0");
+        _assert(dets0);
+
+        if ( tmp_nboxes > defaultDetectionsCount){
+            printf("!Warrning, number of detections exceeded the default total detections.\n\
+            %d detections detected, only %d will be used.\n", nboxes, defaultDetectionsCount);
+	    tmp_nboxes = defaultDetectionsCount;
+	}
+
+        size_t jj = 0, kk = 0;
+        for(size_t i = 0; i < tmp_nboxes; ++i) 
+        {
+            dets0[i].classes    = classes; 
+            dets0[i].objectness = 0;  
+            dets0[i].sort_class = 0;
+            dets0[i].points     = 0;
+            dets0[i].bbox.x = BBOX[jj];
+            dets0[i].bbox.y = BBOX[jj+1];
+            dets0[i].bbox.w = BBOX[jj+2];
+            dets0[i].bbox.h = BBOX[jj+3];
+            dets0[i].mask = NULL;   // mask assumed to be alwyas NULL
+            dets0[i].uc   =  NULL;
+
+            // char _string[100];
+            // snprintf(_string, sizeof(_string), "\t[%ld] dets0.prob ", i);
+            dets0[i].prob = (float *)_malloc(classes*sizeof(float), "dets0.prob");
+            //memcpy(dets0[i].prob, &PROB[kk], classes*sizeof(float));
+            for(size_t l = 0; l < classes; ++l)
+            {
+                dets0[i].prob[l] = PROB[kk + l];
+            }
+            jj += 4;
+            kk += classes;
+        }
+
+
+        updateTrackers(dets0, nboxes, thresh, &tracked_dets, &tracked_nboxes, image_width, image_height);
+        
+        _free_detections(dets0, tmp_nboxes);
+            
+        
+        //fflush(stdout);
+        int tmp_tracked_nboxes = tracked_nboxes;
+ 
+        if ( tracked_nboxes > 0 )
+        {
+            printf("DETECTED_OBJECTS | ");
+            for(int i = 0; i < tracked_nboxes; ++i)
+                printf("%d, ", tracked_dets[i].objectTyp ); //names[tracked_dets[i].objectTyp]);
+            printf("\n");
+         
+            /*char itemstring[200];
+              printf("{\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", 
+              tracked_dets[0].trackerID, names[tracked_dets[0].objectTyp], tracked_dets[0].bbox.x, 
+              tracked_dets[0].bbox.y , tracked_dets[0].bbox.w , tracked_dets[0].bbox.h);
+              int i = 1;
+              for(i = 1; i < tracked_nboxes; ++i) {
+              printf(", {\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", 
+              tracked_dets[i].trackerID, names[tracked_dets[i].objectTyp], tracked_dets[i].bbox.x, 
+              tracked_dets[i].bbox.y , tracked_dets[i].bbox.w , tracked_dets[i].bbox.h);
+              }*/
+
+            tmp_tracked_nboxes = tracked_nboxes;
+            tracked_nboxes = 0;
+            _assert(tracked_dets);
+            free(tracked_dets);
+            //printf("]}\n");
+        }
+        //fflush(stdout);
+
+
+        //gettimeofday(&toc, NULL);
+        //float simTime = ((toc.tv_sec * 1000.0 + ((float)(toc.tv_usec) / 1000.0)) - 
+        //        (tic.tv_sec * 1000.0 + ((float)(tic.tv_usec) / 1000.0)));
+        //float simTime = 0.0f;
+        
+        double after = get_time_point();    // more accurate time measurements
+        double curr_usec = (after - before);
+        double curr_msec = curr_usec * 0.001;
+        ///after = before = 0.0f;
+
+        
+        printf("\tIteration: %d | EXECUTION TIME  %.2f ms. [\tnboxes %d with %d tracked nboxes] \n", 
+        itr, curr_msec ,  nboxes, tmp_tracked_nboxes);
+        //#endif 
+        //printf("\tIteration: %d  \n",   itr);
+
+       /* if (curr_usec < minFrameTime){
+            usleep(minFrameTime - curr_usec);
+            curr_usec = minFrameTime;
+        }
+        framecounteracc += curr_usec;
+        framecounter += 1;
+        if (framecounter > maxFPS){
+            printf("{\"OBJECT_DET_FPS\": %.2f}\n", (1000000. / (framecounteracc / framecounter)));
+            fflush(stdout);
+            framecounteracc = 0.0;
+            framecounter = 0;
+        }*/
+        
+        ++itr;    
+
+        // } // end of if(nboxes > 0)
+       
+       // printf("while return\n"); 
+    
+    } // end of while
+    
+    //printf("before return\n");
+
+    #pragma oss taskwait
+
+
+    _lfree(BBOX,      4 * defaultDetectionsCount * sizeof(float));
+    _lfree(PROB,      defaultDetectionsCount * classes * sizeof(float));
+    _lfree(_data0,   in_s_data_length * sizeof(float));
+    _lfree(_data1,   in_s_data_length * sizeof(float));
+
+    return 0;
+}
+
+
+/*
+NOTES:
+
+ 1- MYsort.c line 37 missing brackets of for loop
+ 2- 
+
+*/
+
+ 
