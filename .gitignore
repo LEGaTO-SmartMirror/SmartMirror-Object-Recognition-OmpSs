@@ -1,0 +1,6 @@
+#ignore pyc...
+*.pyc
+
+object_detection_ompss/build/*.o
+object_detection_ompss/data/*.weights
+object_detection_ompss/data/*.mp4
