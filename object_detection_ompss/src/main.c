@@ -47,13 +47,10 @@ int main(int argc, char** argv)
 	network* pNet;
 	image inS0;
 	image* pInS1;
-	TrackedObject* pTrackedDets = NULL;
 
 	/*   ===== Detection =====   */
 	int defaultDetectionsCount = 20; // this is speculated, only known at run time, and changes value at each detection (nboxes)
 	int nBoxes = 0;
-	int lastNBoxes = 0;
-	int trackedNBoxes = 0;
 	float* pBBox;
 	float* pData0;
 	float* pData1;
@@ -93,11 +90,6 @@ int main(int argc, char** argv)
 	/*  ===== some arrays need to be prefilled with zeros =====  */
 	for (size_t i = 0; i < 4 * defaultDetectionsCount; ++i) {pBBox[i] = 0.0f;};
 
-	/*if (argc < 3)
-	{
-		fprintf(stderr, "Usage: %s USE_CAM [VIDEO|CAM]_SRC\n", argv[0]);
-		return -1;
-	}*/
 
 	/*  ===== Initialize the network =====  */
 	/* THIS NEEDS TO BE EXECUTED ON THE SECOND XAVIER */
@@ -112,12 +104,11 @@ int main(int argc, char** argv)
 		pInS1->w = IMAGE_WIDTH;
 		pInS1->h = IMAGE_HEIGHT;
 		pInS1->c = CHANNELS;
-		//pInS1->data = (float*)_malloc(inSDataLength * sizeof(float), "pInS1.data.task");
 		pInS1->data = pData1;
 
 		init_trackers(classes);
-
 	}
+
 
 #pragma oss taskwait
 
@@ -159,8 +150,6 @@ int main(int argc, char** argv)
 	release_mat(&pInImg);
 
 
-	
-
 
 	/**  =====  LOOP FOREVER!  =====  */
 	while (1)
@@ -188,12 +177,13 @@ int main(int argc, char** argv)
 			continue;
 		} */
 
-#pragma oss task inout(pNet) inout(pInS1) in(classes) in(pData1[0;inSDataLength])  \
+#pragma oss task in(pNet) in(pInS1) in(classes) in(pData1[0;inSDataLength])  \
         out(nBoxes) out(pBBox[0;4*defaultDetectionsCount]) out(pTrackerID[0;defaultDetectionsCount])\
         out(pObjectTyp[0;defaultDetectionsCount]) label("get_fetch_task") node(1)
 		{
 			int inSDataLength = IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS;
 			int nBoxesTask = 0;
+			int nBoxesTaskThreshed = 0;
 			size_t j = 0;
 			size_t k = 0;
 			box bbox;
@@ -205,13 +195,19 @@ int main(int argc, char** argv)
 			network_predict_image(pNet, *pInS1);
 			pDets1 = get_network_boxes(pNet, IMAGE_WIDTH, IMAGE_HEIGHT, THRESH, HIER_THRESH, 0, 1, &nBoxesTask, 0);
 
-			updateTrackers(pDets1, nBoxesTask, THRESH, &pTrackedDets, &trackedNBoxes, IMAGE_WIDTH, IMAGE_HEIGHT);
+			nBoxesTaskThreshed = nBoxesTask;
+			if(nBoxesTask > defaultDetectionsCount){
+				printf("nBoxes(%d) was to big!!! removing some detection.. please increase defaultDetectionsCount \n",nBoxes);
+				do_nms_sort(pDets1, nBoxes, classes, nms);
+				nBoxesTaskThreshed = defaultDetectionsCount;
+			}
+			
+			updateTrackers(pDets1, nBoxesTaskThreshed, THRESH, &pTrackedDets, &trackedNBoxes, IMAGE_WIDTH, IMAGE_HEIGHT);
 
 			nBoxes = trackedNBoxes;
 			
 			for (size_t i = 0; i < trackedNBoxes; ++i)
 			{
-
 				bbox = pDets1[i].bbox;
 				pBBox[j] = bbox.x;
 				pBBox[j + 1] = bbox.y;
@@ -220,7 +216,6 @@ int main(int argc, char** argv)
 
 				pTrackerID[i] = pTrackedDets[i].trackerID;
 				pObjectTyp[i] =  pTrackedDets[i].objectTyp;
-
 			}
 
 			if (pTrackedDets != NULL)
