@@ -2,12 +2,11 @@
 // KalmanTracker.h: KalmanTracker Class Declaration
 
 #ifndef KALMAN_TRACKER_HPP
-#define KALMAN_TRACKER_HPP 2
+#define KALMAN_TRACKER_HPP
 
 #include "opencv2/video/tracking.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/core/types.hpp"
-
 #include <iostream>
 
 using namespace std;

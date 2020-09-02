@@ -1,27 +1,8 @@
 #include "MYSort.h"
 
-#define _assert(cond)                                           \
-{                                                               \
-    if(!cond)                                                   \
-    {                                                           \
-        fprintf(stderr, "[%s][%s]:[%u] Assertion '%s' failed. \n",    \
-        __func__, __FILE__, __LINE__, #cond);                   \
-        abort();                                                \
-    }                                                           \
-}
-
-//#define P
-
-void _p(const char* str)
-{
-	#ifdef P
-	printf("\t%s.\n", str);
-	#endif
-}
 
 void init_trackers(size_t max_index){
-	
-	_p("calling init_trackers()");
+	 
 	trackers = (struct KalmanTracker***) malloc(sizeof(struct KalmanTracker**) * max_index);
 	tracker_types = max_index;
 	tracker_amount = (size_t*) malloc(sizeof(size_t) * max_index);
@@ -34,20 +15,22 @@ void init_trackers(size_t max_index){
 		
 	dets_sorted = (detection***) malloc(sizeof(detection**) *max_index);
 	dets_sorted_number = (size_t*) malloc(sizeof(size_t) * max_index);
-	for(i=0;i<	max_index ; ++i) {
+	for(i=0;i<	max_index ; ++i){
 		dets_sorted_number[i] = 0;
 		dets_sorted[i] = NULL;
 	}
 		
 	dets_predictions = (box**)  malloc(sizeof(box*) * max_index);
-	_p("exiting init_trackers()");
+	
 }
 
 static void extentTrackers(size_t index, box inital_rect){
 
-	_p("calling extentTrackers()");
 	int i = 0;
+	
+	
 	tracker_amount[index] += 1;
+	
 	struct KalmanTracker** new_trackers =(struct KalmanTracker**) malloc(sizeof(struct KalmanTracker*) * tracker_amount[index]);
 	box* new_dets_predictions = (box*) malloc(sizeof(box) * tracker_amount[index]);
 
@@ -71,13 +54,11 @@ static void extentTrackers(size_t index, box inital_rect){
 		
 	trackers[index] = new_trackers;		
 	dets_predictions[index] = new_dets_predictions;
-	_p("exiting extentTrackers()");
+	
 }
 
 static void removeTracker(size_t index, size_t removeIndex){
 	
-	_p("calling removeTraker");
-	_assert(tracker_amount);
 	if (tracker_amount[index] <= removeIndex){
 		printf("error: you tried remove a not existing tracker!\n");
 		return;
@@ -119,24 +100,23 @@ static void removeTracker(size_t index, size_t removeIndex){
 	dets_predictions[index] = new_dets_predictions;
 	
 	tracker_amount[index] = tracker_amount[index]-1;
-	_p("exiting removeTraker");
+	
 }
 
-void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** return_dets, int* return_nboxes, size_t _image_width,size_t _image_height  ){
+ 
+
+void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** return_dets, int* return_nboxes, size_t image_width,size_t image_height  ){
 	
-	_p("calling updateTrackers");
 	size_t i = 0;
 	size_t j = 0;
 	size_t k = 0;
-	_assert(dets);
- 	//printf("tracker_types  %ld \n", tracker_types);  
+	
 	//--------------------------------------------------------
 	//first we need to sort the detections into types
-	for(i = 0; i < nboxes; ++i) {
+	for(i=0;i<nboxes; ++i){
 		for (j = 0; j < tracker_types; ++j) {
-			_assert(dets[i].prob);
 			if (dets[i].prob[j] > thresh) {
-				addDetToArray(j, &dets[i]);
+				addDetToArray(j,&dets[i]);
 			}
 		}
 	}
@@ -148,7 +128,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 	size_t detNum = 0;
 	returned_object_amount = 0;
 	
-	for(actual_type = 0; actual_type < tracker_types; ++actual_type) {	
+	for(actual_type=0; actual_type<tracker_types; ++actual_type){	
 
 		trkNum = tracker_amount[actual_type];
 		detNum = dets_sorted_number[actual_type];
@@ -179,9 +159,9 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		
 		for (i = trkNum; i > 1; --i){
 			for (j = i-1; j > 0; --j){
-				float iou_tmp = calculateIOU(dets_predictions[actual_type][i-1],dets_predictions[actual_type][j-1],_image_width, _image_height);
+				float iou_tmp = calculateIOU(dets_predictions[actual_type][i-1],dets_predictions[actual_type][j-1],image_width, image_height);
 				if (iou_tmp > TrackerIOUsimThreshhold){
-						removeTracker(actual_type, i-1);
+						removeTracker(actual_type,i-1);
 				}
 			}
 		}
@@ -201,7 +181,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 
 			
 			for (j = 0; j < detNum; ++j) {
-				distMatrix[i][j] = 1 - calculateIOU(dets_predictions[actual_type][i],dets_sorted[actual_type][j]->bbox,_image_width, _image_height);
+				distMatrix[i][j] = 1 - calculateIOU(dets_predictions[actual_type][i],dets_sorted[actual_type][j]->bbox,image_width, image_height);
 				
 				// if the iou is too low it should not be considered
 				if(distMatrix[i][j] > distThreshold)
@@ -284,18 +264,16 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 			dets_sorted_number[i] = 0;
 		}
 	}
-	_p("exiting updateTrackers");
 }
 
 static void addDetToArray(size_t index, detection* det){
 	
-	_p("calling addDetToArray");
 	int i = 0;
 	
 	detection** new_detections = (detection**) malloc(sizeof(detection*) * (dets_sorted_number[index] + 1));
 			
-	if (dets_sorted_number[index] > 0) {
-		for(i = 0; i < dets_sorted_number[index]; ++i) {
+	if (dets_sorted_number[index] > 0){
+		for(i = 0; i < dets_sorted_number[index]; ++i){
 			new_detections[i] = dets_sorted[index][i];
 		}
 		free(dets_sorted[index]);		
@@ -306,12 +284,11 @@ static void addDetToArray(size_t index, detection* det){
 	dets_sorted[index] = new_detections;
 	
 	dets_sorted_number[index] += 1;
-	_p("exiting addDetToArray");		
+			
 }
 
 static void addDetToReturnArray(TrackedObject det){
 
-	_p("calling addDetToReturnArray");
 	int i = 0;
 	TrackedObject* new_detections = (TrackedObject*) malloc(sizeof(TrackedObject) * (returned_object_amount + 1));
 
@@ -326,35 +303,31 @@ static void addDetToReturnArray(TrackedObject det){
 
 	returned_object = new_detections;
 	returned_object_amount += 1;
-	_p("exiting addDetToReturnArray");			
+				
 }
 
 static int valueinarray(int val, int arr[], size_t n){
 	
-	_p("calling valueinarray");
     int i;
     for(i = 0; i < n; i++)
     {
         if(arr[i] == val)
             return i;
     }
-	_p("exiting valueinarray");
     return -1;
-	
 }
 
-static float calculateIOU(box a, box b,size_t _image_width,size_t _image_height){
-	_p("calling calculateIOU");
+static float calculateIOU(box a, box b,size_t image_width,size_t image_height){
 	
-	float a_ab_x = a.x * _image_width;
-	float a_ab_y = a.y * _image_height;
-	float a_ab_w = a.w * _image_width;
-	float a_ab_h = a.h * _image_height;
+	float a_ab_x = a.x * image_width;
+	float a_ab_y = a.y * image_height;
+	float a_ab_w = a.w * image_width;
+	float a_ab_h = a.h * image_height;
 		
-	float b_ab_x = b.x * _image_width;
-	float b_ab_y = b.y * _image_height;
-	float b_ab_w = b.w * _image_width;
-	float b_ab_h = b.h * _image_height;
+	float b_ab_x = b.x * image_width;
+	float b_ab_y = b.y * image_height;
+	float b_ab_w = b.w * image_width;
+	float b_ab_h = b.h * image_height;
 	
 	float overlap_x0 = (a_ab_x-a_ab_w/2) > (b_ab_x-b_ab_w/2) ? (a_ab_x-a_ab_w/2) : (b_ab_x-b_ab_w/2);
 	float overlap_y0 = (a_ab_y-a_ab_h/2) > (b_ab_y-b_ab_h/2) ? (a_ab_y-a_ab_h/2) : (b_ab_y-b_ab_h/2);
@@ -372,6 +345,5 @@ static float calculateIOU(box a, box b,size_t _image_width,size_t _image_height)
 	
 	float o = wh / ((a_ab_w * a_ab_h) + (b_ab_w * b_ab_h) - wh);
 		
-	_p("exiting calculateIOU");	
 	return o;
 }

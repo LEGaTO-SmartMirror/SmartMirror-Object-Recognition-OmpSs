@@ -45,7 +45,7 @@ MCCFILES = $(wildcard mcc_*)
 
 EXECUTABLE = objDetect.bin
 
-SYNC = scp ./${EXECUTABLE}  $(USER)@smartmirror4:/opt/dev/SmartMirror-Object-Recognition-OmpSs/object_detection_ompss/build/
+SYNC = scp ./${EXECUTABLE}  $(USER)@smartmirror4:/opt/dev/MagicMirror/modules/SmartMirror-Object-Recognition-OmpSs/object_detection_ompss/build/
 
 all: $(EXECUTABLE)
 

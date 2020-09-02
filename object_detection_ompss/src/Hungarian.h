@@ -4,10 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <tgmath.h>
-#include <float.h>
 
-//#define DBL_EPSILON 2.2204460492503131E-16
-//#define __DBL_EPSILON__ DBL_EPSILON
+
 
 double Solve(size_t trkNum, size_t detNum,float** DistMatrix, int* Assignment);
 

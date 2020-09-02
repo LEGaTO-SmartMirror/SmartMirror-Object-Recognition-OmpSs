@@ -12,9 +12,9 @@ static struct KalmanTracker*** trackers;
 static size_t tracker_types;
 static size_t* tracker_amount;
 
-#define max_age                     5
-#define distThreshold               0.95
-#define TrackerIOUsimThreshhold     0.8
+static size_t max_age = 5;
+static float distThreshold = 0.8;
+static float TrackerIOUsimThreshhold = 0.5;
 
 // for an efficent tracking all detecitons needs to be sorted for object types.
 // detection[tracker_types][dets_sorted_number[tracker_types]]
@@ -42,7 +42,7 @@ static box** dets_predictions;
 void init_trackers(size_t max_index);
 
 // public 
-void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** return_dets, int* return_nboxes, size_t _image_width, size_t _image_height);
+void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** return_dets, int* return_nboxes, size_t image_width, size_t image_height);
 
 //internal functions for compuational splitting
 static void addDetToArray(size_t index, detection* det);
@@ -50,7 +50,7 @@ static void addDetToReturnArray(TrackedObject det);
 static void extentTrackers(size_t index, box inital_rect);
 static void removeTracker(size_t index, size_t removeIndex);
 static int valueinarray(int val, int arr[], size_t n);
-static float calculateIOU(box a, box b, size_t _image_width, size_t _image_height);
+static float calculateIOU(box a, box b, size_t image_width, size_t image_height);
 
 
 #endif

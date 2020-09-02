@@ -1,3 +1,5 @@
+#!/bin/bash
+
 NOS6=/opt/dev/ompss@cluster/bin/oss2cluster/nanos6
 MCXX=/opt/dev/ompss@cluster/bin/oss2cluster/mcxx
 #DARKNET=/opt/dev/ompss@cluster/darknet
@@ -36,7 +38,7 @@ export NANOS6=optimized
 export NANOS6_SCHEDULER=locality
 export NANOS6_CLUSTER_SCHEDULING_POLICY=locality
 export NANOS6_COMMUNICATION=mpi-2sided
-export NANOS6_LOCAL_MEMORY=8GB
+export NANOS6_LOCAL_MEMORY=16GB
 #export NANOS6_DISTRIBUTED_MEMORY=1GB
 export NANOS6_LOADER_VERBOSE=1
 
