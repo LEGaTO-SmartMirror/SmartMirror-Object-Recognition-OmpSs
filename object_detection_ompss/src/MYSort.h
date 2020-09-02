@@ -24,7 +24,7 @@ static size_t* dets_sorted_number;
 typedef struct TrackedObject{
     box bbox;
     int objectTyp;
-    size_t trackerID;
+    int trackerID;
 } TrackedObject;
 
 static TrackedObject* returned_object;

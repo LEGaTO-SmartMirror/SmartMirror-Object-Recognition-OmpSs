@@ -110,6 +110,9 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 	size_t i = 0;
 	size_t j = 0;
 	size_t k = 0;
+
+	*return_dets = NULL;
+	*return_nboxes = 0;
 	
 	//--------------------------------------------------------
 	//first we need to sort the detections into types
@@ -253,7 +256,12 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 	
 	} // end type loop
 
-	*return_dets = returned_object;
+
+	if (*return_nboxes > 0) {
+		*return_dets = returned_object;
+	} else {
+		*return_dets = NULL;
+	}	
 	
 	//printf("-------------------------------------------------------- \n");
 	

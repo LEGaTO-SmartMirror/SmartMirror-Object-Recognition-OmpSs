@@ -50,16 +50,15 @@ int main(int argc, char** argv)
 	TrackedObject* pTrackedDets = NULL;
 
 	/*   ===== Detection =====   */
-	detection* pDets0 = NULL;
-	detection* pDets1 = NULL;
 	int defaultDetectionsCount = 20; // this is speculated, only known at run time, and changes value at each detection (nboxes)
 	int nBoxes = 0;
 	int lastNBoxes = 0;
 	int trackedNBoxes = 0;
-	float* pProb;
 	float* pBBox;
 	float* pData0;
 	float* pData1;
+	int* pTrackerID;
+	int* pObjectTyp;
 	int itr = 0;
 
 	/*   ===== Classes =====   */
@@ -87,18 +86,12 @@ int main(int argc, char** argv)
 	
 	pData0 = (float*)_lmalloc(inSDataLength * sizeof(float), "data_struct_0");
 	pData1 = (float*)_lmalloc(inSDataLength * sizeof(float), "data_struct_1");
-	pProb = (float*)_lmalloc(defaultDetectionsCount * classes * sizeof(float), "pProb");
+	pTrackerID = (int*)_lmalloc(defaultDetectionsCount *  sizeof(int), "pTrackerID");
+	pObjectTyp = (int*)_lmalloc(defaultDetectionsCount *  sizeof(int), "pObjectTyp");
 	pBBox = (float*)_lmalloc(defaultDetectionsCount * 4 * sizeof(float), "pBBox");
-	pDets0 = (detection*)_malloc(defaultDetectionsCount * sizeof(detection), "pDets0");
-
-	for (size_t i = 0; i <defaultDetectionsCount; ++i) {
-		pDets0[i].prob = (float*)_malloc(classes * sizeof(float), "pDets0.prob");
-	}
-
 	
 	/*  ===== some arrays need to be prefilled with zeros =====  */
 	for (size_t i = 0; i < 4 * defaultDetectionsCount; ++i) {pBBox[i] = 0.0f;};
-	for (size_t i = 0; i < classes * defaultDetectionsCount; ++i) {pProb[i] = 0.0f;};
 
 	/*if (argc < 3)
 	{
@@ -108,7 +101,7 @@ int main(int argc, char** argv)
 
 	/*  ===== Initialize the network =====  */
 	/* THIS NEEDS TO BE EXECUTED ON THE SECOND XAVIER */
-#pragma oss task inout(pNet) inout(pInS1) inout(pData1) node(1) label("init_network_task")
+#pragma oss task inout(pNet) inout(pInS1) inout(pData1) in(classes) node(1) label("init_network_task")
 	{
 		pNet = load_network_custom(CFG_FILE, WEIGHT_FILE, 1, 1);
 		set_batch_network(pNet, 1);
@@ -121,6 +114,8 @@ int main(int argc, char** argv)
 		pInS1->c = CHANNELS;
 		//pInS1->data = (float*)_malloc(inSDataLength * sizeof(float), "pInS1.data.task");
 		pInS1->data = pData1;
+
+		init_trackers(classes);
 
 	}
 
@@ -144,8 +139,6 @@ int main(int argc, char** argv)
 		abort();
 	}
 
-
-	
 	FD_ZERO(&readfds);
 
 	/** If detection is to fast we need a break */
@@ -196,8 +189,8 @@ int main(int argc, char** argv)
 		} */
 
 #pragma oss task inout(pNet) inout(pInS1) in(classes) in(pData1[0;inSDataLength])  \
-        out(nBoxes) out(pBBox[0;4*defaultDetectionsCount]) \
-        out(pProb[0;defaultDetectionsCount*classes]) label("get_fetch_task") node(1)
+        out(nBoxes) out(pBBox[0;4*defaultDetectionsCount]) out(pTrackerID[0;defaultDetectionsCount])\
+        out(pObjectTyp[0;defaultDetectionsCount]) label("get_fetch_task") node(1)
 		{
 			int inSDataLength = IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS;
 			int nBoxesTask = 0;
@@ -206,39 +199,37 @@ int main(int argc, char** argv)
 			box bbox;
 			detection* pDets1;
 			float nms = .6f;    // 0.4F
-
-			//for (size_t i = 0; i < inSDataLength; ++i)
-			//	pInS1->data[i] = pData1[i];
+			TrackedObject* pTrackedDets;
+			int trackedNBoxes = 0;
 
 			network_predict_image(pNet, *pInS1);
 			pDets1 = get_network_boxes(pNet, IMAGE_WIDTH, IMAGE_HEIGHT, THRESH, HIER_THRESH, 0, 1, &nBoxesTask, 0);
 
+			updateTrackers(pDets1, nBoxesTask, THRESH, &pTrackedDets, &trackedNBoxes, IMAGE_WIDTH, IMAGE_HEIGHT);
 
-			nBoxes = nBoxesTask;
-			if(nBoxes > defaultDetectionsCount){
-				printf("nBoxes was to big.. cutting away.. (%d)\n",nBoxes);
-				do_nms_sort(pDets1, nBoxes, classes, nms);
-				nBoxes = defaultDetectionsCount;
-			}
+			nBoxes = trackedNBoxes;
 			
-
-			
-			for (size_t i = 0; i < nBoxes; ++i)
+			for (size_t i = 0; i < trackedNBoxes; ++i)
 			{
+
 				bbox = pDets1[i].bbox;
 				pBBox[j] = bbox.x;
 				pBBox[j + 1] = bbox.y;
 				pBBox[j + 2] = bbox.w;
 				pBBox[j + 3] = bbox.h;
 
-				for (size_t l = 0; l < classes; ++l)
-					pProb[k + l] = pDets1[i].prob[l];
+				pTrackerID[i] = pTrackedDets[i].trackerID;
+				pObjectTyp[i] =  pTrackedDets[i].objectTyp;
 
-				j += 4;
-				k += classes;
 			}
 
-			_free_detections(pDets1, nBoxesTask);
+			if (pTrackedDets != NULL)
+				free(pTrackedDets);
+
+			trackedNBoxes = 0;
+			
+			if (pDets1 != NULL)
+				_free_detections(pDets1, nBoxesTask);
 		} // end of task
 
 #pragma oss task inout(pData0[0; inSDataLength]) inout(cap) node(0) label("get_image_from_stream_resize_task")
@@ -253,68 +244,25 @@ int main(int argc, char** argv)
 #pragma oss taskwait  
 
 
-
-
 		for (size_t i = 0; i < inSDataLength; ++i)
 			pData1[i] = pData0[i];
-
-		//printf ("%d\n",nBoxes);
-		// DOES NOT WORK PROPERLY
-		//_assert(!(nBoxes < 0));
-
-		//pDets0 = (detection*)_malloc(nBoxes * sizeof(detection), "pDets0");
-		//_assert(pDets0);
-
-		if (nBoxes > defaultDetectionsCount)
-		{
-			printf("!Warrning, number of detections exceeded the default total detections.\n\
-			        %d detections detected, only %d will be used.\n", nBoxes, defaultDetectionsCount);
-			nBoxes = defaultDetectionsCount;
-		}
-
-		for (size_t i = 0; i < nBoxes; ++i)
-		{
-			pDets0[i].classes = classes;
-			pDets0[i].objectness = 0;
-			pDets0[i].sort_class = 0;
-			pDets0[i].points = 0;
-			pDets0[i].bbox.x = pBBox[jj];
-			pDets0[i].bbox.y = pBBox[jj + 1];
-			pDets0[i].bbox.w = pBBox[jj + 2];
-			pDets0[i].bbox.h = pBBox[jj + 3];
-			pDets0[i].mask = NULL;   // mask assumed to be alwyas NULL
-			pDets0[i].uc = NULL;
-
-			for (size_t l = 0; l < classes; ++l)
-				pDets0[i].prob[l] = pProb[kk + l];
-			jj += 4;
-			kk += classes;
-		}
-
-		updateTrackers(pDets0, nBoxes, THRESH, &pTrackedDets, &trackedNBoxes, IMAGE_WIDTH, IMAGE_HEIGHT);
-		//_free_detections(pDets0, nBoxes);
-		//nBoxes = 0;
 
 
 		fflush(stdout);
 		printf("{\"DETECTED_OBJECTS\": [");
 
-		if (trackedNBoxes > 0)
+		if (nBoxes > 0)
 		{
-			printf("{\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
-				pTrackedDets[0].trackerID, ppNames[pTrackedDets[0].objectTyp], pTrackedDets[0].bbox.x,
-				pTrackedDets[0].bbox.y, pTrackedDets[0].bbox.w, pTrackedDets[0].bbox.h);
+			printf("{\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
+				pTrackerID[0], ppNames[pObjectTyp[0]], pBBox[0],
+				pBBox[1], pBBox[2], pBBox[3]);
 			int i = 1;
-			for (i = 1; i < trackedNBoxes; ++i)
+			for (i = 1; i < nBoxes; ++i)
 			{
-				printf(", {\"TrackID\": %li, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
-					pTrackedDets[i].trackerID, ppNames[pTrackedDets[i].objectTyp], pTrackedDets[i].bbox.x,
-					pTrackedDets[i].bbox.y, pTrackedDets[i].bbox.w, pTrackedDets[i].bbox.h);
+				printf(", {\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}",
+					pTrackerID[i], ppNames[pObjectTyp[i]], pBBox[i*4 + 0],
+					pBBox[i*4 + 1], pBBox[i*4 + 2], pBBox[i*4 + 3]);
 			}
-
-			trackedNBoxes = 0;
-			//_assert(pTrackedDets);
-			free(pTrackedDets);			
 		}
 
 		printf("]}\n");
@@ -346,12 +294,11 @@ int main(int argc, char** argv)
 
 #pragma oss taskwait
 
-
 	_lfree(pBBox, 4 * defaultDetectionsCount * sizeof(float));
-	_lfree(pProb, defaultDetectionsCount * classes * sizeof(float));
 	_lfree(pData0, inSDataLength * sizeof(float));
 	_lfree(pData1, inSDataLength * sizeof(float));
-	_free_detections(pDets0, defaultDetectionsCount);
+	_lfree(pTrackerID, defaultDetectionsCount * sizeof(int));
+	_lfree(pObjectTyp, defaultDetectionsCount * sizeof(int));
 	
 	// TODO: At one point pInS1, pInS1->data and pNet need to be freed
 
