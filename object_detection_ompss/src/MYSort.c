@@ -8,6 +8,7 @@ void init_trackers(size_t max_index){
 	tracker_amount = (size_t*) malloc(sizeof(size_t) * max_index);
 		
 	int i;
+	#pragma omp for
 	for(i=0;i<	max_index ; ++i){
 		trackers[i] = NULL;
 		tracker_amount[i] = 0;
@@ -15,6 +16,7 @@ void init_trackers(size_t max_index){
 		
 	dets_sorted = (detection***) malloc(sizeof(detection**) *max_index);
 	dets_sorted_number = (size_t*) malloc(sizeof(size_t) * max_index);
+	#pragma omp for
 	for(i=0;i<	max_index ; ++i){
 		dets_sorted_number[i] = 0;
 		dets_sorted[i] = NULL;
@@ -34,6 +36,7 @@ static void extentTrackers(size_t index, box inital_rect){
 	struct KalmanTracker** new_trackers =(struct KalmanTracker**) malloc(sizeof(struct KalmanTracker*) * tracker_amount[index]);
 	box* new_dets_predictions = (box*) malloc(sizeof(box) * tracker_amount[index]);
 
+	#pragma omp for
 	for(i=0 ; i<tracker_amount[index] -1 ; ++i){
 		
 		if(i < tracker_amount[index]){
@@ -131,6 +134,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 	size_t detNum = 0;
 	returned_object_amount = 0;
 	
+
 	for(actual_type=0; actual_type<tracker_types; ++actual_type){	
 
 		trkNum = tracker_amount[actual_type];
@@ -143,6 +147,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 
 		//--------------------------------------------------------
 		// get predictions of each tracker
+		
 		for (i = 0; i <tracker_amount[actual_type]; ++i) {
 			dets_predictions[actual_type][i] = MyKalmanPredict(trackers[actual_type][i]);
 			// remove nan value
@@ -161,6 +166,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		// therefore remove the last tracker because it should be younger
 		
 		for (i = trkNum; i > 1; --i){
+			
 			for (j = i-1; j > 0; --j){
 				float iou_tmp = calculateIOU(dets_predictions[actual_type][i-1],dets_predictions[actual_type][j-1],image_width, image_height);
 				if (iou_tmp > TrackerIOUsimThreshhold){
@@ -184,7 +190,13 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 
 			
 			for (j = 0; j < detNum; ++j) {
-				distMatrix[i][j] = 1 - calculateIOU(dets_predictions[actual_type][i],dets_sorted[actual_type][j]->bbox,image_width, image_height);
+				
+				float IOU = calculateIOU(dets_predictions[actual_type][i],dets_sorted[actual_type][j]->bbox,image_width, image_height);
+				if (IOU < 0)
+					IOU = 0;
+				if (IOU > 1)
+					IOU = 1;
+				distMatrix[i][j] = 1 - IOU;
 				
 				// if the iou is too low it should not be considered
 				if(distMatrix[i][j] > distThreshold)
@@ -214,7 +226,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		
 		//------------------------
 		// free everything allocated..
-				
+			
 		for (i = 0; i <trkNum; ++i)
 			free(distMatrix[i]);
 			
@@ -266,6 +278,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 	//printf("-------------------------------------------------------- \n");
 	
 	// delete pointer to detection
+	
 	for (i = 0; i < tracker_types; ++i) {
 		if(dets_sorted_number[i] > 0){
 			free(dets_sorted[i]);		
@@ -281,6 +294,7 @@ static void addDetToArray(size_t index, detection* det){
 	detection** new_detections = (detection**) malloc(sizeof(detection*) * (dets_sorted_number[index] + 1));
 			
 	if (dets_sorted_number[index] > 0){
+		#pragma omp for
 		for(i = 0; i < dets_sorted_number[index]; ++i){
 			new_detections[i] = dets_sorted[index][i];
 		}
@@ -301,6 +315,7 @@ static void addDetToReturnArray(TrackedObject det){
 	TrackedObject* new_detections = (TrackedObject*) malloc(sizeof(TrackedObject) * (returned_object_amount + 1));
 
 	if (returned_object_amount > 0){
+		
 		for(i = 0; i < returned_object_amount; ++i){
 			new_detections[i] = returned_object[i];
 		}
