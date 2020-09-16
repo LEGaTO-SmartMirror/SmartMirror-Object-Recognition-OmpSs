@@ -47,6 +47,7 @@ int main(int argc, char** argv)
 	int frameCounter = 0;
 	float frameCounterAcc = 0.0f;
 	float maxFPS = 30.0f;
+	int delta = 0.0f;
 	double currUSec = 0.0f;
 	double currMSec = 0.0f;
 
@@ -126,6 +127,11 @@ int main(int argc, char** argv)
 		pIn1S1->c = CHANNELS;
 		pIn1S1->data = (float*)_malloc(inSDataLength * sizeof(float), "pIn1S1.data.task");
 
+		for (size_t i = 0; i < inSDataLength; ++i) {
+			pIn0S1->data[i] = 0.0f;
+			pIn1S1->data[i] = 0.0f;
+		}
+
 		init_trackers(classes);
 
 	} // end of task
@@ -150,7 +156,7 @@ int main(int argc, char** argv)
 		before = get_time_point();
 
 		if(itr % 2 == 0){
-			
+
 			#pragma oss task weakin(pData1[0; inSDataLength]) node(1) label("even_copy")
 			{
 					
@@ -283,6 +289,13 @@ int main(int argc, char** argv)
 
 		free_image(inS0);
 		release_mat(&pInImg);
+
+
+		// the detection needs at least 30ms.. soo sleep some time..
+		delta =	30 * 1000 - ((get_time_point() - before));
+		if (delta > 0){
+			usleep(delta);
+		}
 
 		#pragma oss taskwait
 
