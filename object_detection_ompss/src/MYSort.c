@@ -8,7 +8,7 @@ void init_trackers(size_t max_index){
 	tracker_amount = (size_t*) malloc(sizeof(size_t) * max_index);
 		
 	int i;
-	#pragma omp for
+	
 	for(i=0;i<	max_index ; ++i){
 		trackers[i] = NULL;
 		tracker_amount[i] = 0;
@@ -16,7 +16,7 @@ void init_trackers(size_t max_index){
 		
 	dets_sorted = (detection***) malloc(sizeof(detection**) *max_index);
 	dets_sorted_number = (size_t*) malloc(sizeof(size_t) * max_index);
-	#pragma omp for
+	
 	for(i=0;i<	max_index ; ++i){
 		dets_sorted_number[i] = 0;
 		dets_sorted[i] = NULL;
@@ -36,7 +36,6 @@ static void extentTrackers(size_t index, box inital_rect){
 	struct KalmanTracker** new_trackers =(struct KalmanTracker**) malloc(sizeof(struct KalmanTracker*) * tracker_amount[index]);
 	box* new_dets_predictions = (box*) malloc(sizeof(box) * tracker_amount[index]);
 
-	#pragma omp for
 	for(i=0 ; i<tracker_amount[index] -1 ; ++i){
 		
 		if(i < tracker_amount[index]){
@@ -129,16 +128,16 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 	
 	//--------------------------------------------------------
 	// loop trough all types..
-	size_t actual_type = 0;
-	size_t trkNum = 0;
-	size_t detNum = 0;
+	//size_t actual_type = 0;
+	//size_t trkNum = 0;
+	//size_t detNum = 0;
 	returned_object_amount = 0;
 	
+	#pragma oss task for chunksize(tracker_types/2)
+	for(size_t actual_type=0; actual_type<tracker_types; ++actual_type){	
 
-	for(actual_type=0; actual_type<tracker_types; ++actual_type){	
-
-		trkNum = tracker_amount[actual_type];
-		detNum = dets_sorted_number[actual_type];
+		size_t trkNum = tracker_amount[actual_type];
+		size_t detNum = dets_sorted_number[actual_type];
 			
 		// if no tracker or detection is present.. nothing needs to be done		
 		if (trkNum == 0 && detNum == 0)
@@ -148,7 +147,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		//--------------------------------------------------------
 		// get predictions of each tracker
 		
-		for (i = 0; i <tracker_amount[actual_type]; ++i) {
+		for (size_t i = 0; i <tracker_amount[actual_type]; ++i) {
 			dets_predictions[actual_type][i] = MyKalmanPredict(trackers[actual_type][i]);
 			// remove nan value
 			if(isnan(dets_predictions[actual_type][i].x))
@@ -165,9 +164,9 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		// combine tracker with a high iou
 		// therefore remove the last tracker because it should be younger
 		
-		for (i = trkNum; i > 1; --i){
+		for (size_t i = trkNum; i > 1; --i){
 			
-			for (j = i-1; j > 0; --j){
+			for (size_t j = i-1; j > 0; --j){
 				float iou_tmp = calculateIOU(dets_predictions[actual_type][i-1],dets_predictions[actual_type][j-1],image_width, image_height);
 				if (iou_tmp > TrackerIOUsimThreshhold){
 						removeTracker(actual_type,i-1);
@@ -185,11 +184,11 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 	
 		float** distMatrix = (float **) malloc(trkNum * sizeof(float *));
 		
-		for (i = 0; i <trkNum; ++i) {
+		for (size_t i = 0; i <trkNum; ++i) {
 			distMatrix[i] = (float *) malloc(detNum * sizeof(float));
 
 			
-			for (j = 0; j < detNum; ++j) {
+			for (size_t j = 0; j < detNum; ++j) {
 				
 				float IOU = calculateIOU(dets_predictions[actual_type][i],dets_sorted[actual_type][j]->bbox,image_width, image_height);
 				if (IOU < 0)
@@ -213,7 +212,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		//--------------------------------------------------------
 		// update Tracker 
 		
-		for (i=0; i < detNum; ++i){
+		for (size_t i=0; i < detNum; ++i){
 			int index = valueinarray(i,assignment,trkNum);
 			
 			if ((index > -1) && distMatrix[index][i] < distThreshold){
@@ -227,7 +226,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		//------------------------
 		// free everything allocated..
 			
-		for (i = 0; i <trkNum; ++i)
+		for (size_t i = 0; i <trkNum; ++i)
 			free(distMatrix[i]);
 			
 		free(distMatrix);
@@ -238,7 +237,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 
 		trkNum = tracker_amount[actual_type];
 		
-		for (i = trkNum; i > 0; --i){
+		for (size_t i = trkNum; i > 0; --i){
 			size_t timeSinceUpdate = MyKalmanTimeSinceUpdate(trackers[actual_type][i-1]);
 			if( timeSinceUpdate > max_age){
 				removeTracker(actual_type,i-1);
@@ -247,7 +246,7 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		
 		if (tracker_amount[actual_type] > 0){
 			//printf("type = %li\n" ,actual_type);
-			for (i = 0; i < tracker_amount[actual_type]; ++i){		
+			for (size_t i = 0; i < tracker_amount[actual_type]; ++i){		
 				int m_hint_steak = MyKalmanGETm_hit_streak(trackers[actual_type][i]);
 				int age = MyKalmanGETm_age(trackers[actual_type][i]);
 				int id = MyKalmanGETm_id(trackers[actual_type][i]);
@@ -267,6 +266,8 @@ void updateTrackers(detection* dets, int nboxes, float thresh, TrackedObject** r
 		} 
 	
 	} // end type loop
+
+	#pragma oss taskwait
 
 
 	if (*return_nboxes > 0) {
@@ -294,7 +295,6 @@ static void addDetToArray(size_t index, detection* det){
 	detection** new_detections = (detection**) malloc(sizeof(detection*) * (dets_sorted_number[index] + 1));
 			
 	if (dets_sorted_number[index] > 0){
-		#pragma omp for
 		for(i = 0; i < dets_sorted_number[index]; ++i){
 			new_detections[i] = dets_sorted[index][i];
 		}
