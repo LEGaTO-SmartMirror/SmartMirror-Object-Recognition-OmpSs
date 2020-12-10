@@ -1,7 +1,7 @@
 #!/bin/bash
 
-NOS6=/opt/dev/ompss@cluster/bin/oss2cluster/nanos6
-MCXX=/opt/dev/ompss@cluster/bin/oss2cluster/mcxx
+NOS6=$OMPSS_HOME
+MCXX=$OMPSS_HOME
 #DARKNET=/opt/dev/ompss@cluster/darknet
 DARKNET=/opt/dev/dependencies/darknet
 OCV=/usr/local/include/opencv4
