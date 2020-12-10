@@ -72,7 +72,6 @@ extern "C"
 	void ProcessDetections()
 	{
 		const YoloTRT::YoloResults &results = g_yoloResults[g_frameCnt % 2];
-		// if (results.empty() && g_trackerSort.IsTrackersEmpty()) return;
 
 		std::map<uint32_t, TrackingObjects> trackingDets;
 
@@ -80,24 +79,25 @@ extern "C"
 		{
 			trackingDets.try_emplace(r.ClassID(), TrackingObjects());
 			trackingDets[r.ClassID()].push_back({ { r.x, r.y, r.w, r.h }, static_cast<uint32_t>(std::abs(r.Conf() * 100)), r.ClassName() });
-			// std::cout << r << std::endl;
-			// cv::rectangle(imgLocal, cv::Point(r.x, r.y), cv::Point(r.x + r.w, r.y + r.h), cv::Scalar(0, 255, 0));
-			// cv::putText(imgLocal, string_format("%s - %f", r.ClassName().c_str(), r.Conf()), cv::Point(r.x, r.y - 10), cv::FONT_HERSHEY_DUPLEX, 0.5, CV_RGB(255, 50, 50), 1);
 		}
 
 		TrackingObjects trackers;
+		TrackingObjects dets;
 
-		// #error This requires a few more checks to catch all possible changes
-		for (const auto &[classID, dets] : trackingDets)
+		for (const auto &[classID, tracker] : enumerate(g_sortTrackers))
 		{
-			TrackingObjects t = g_sortTrackers[classID].Update(dets);
+			if (trackingDets.count(classID))
+				dets = trackingDets[classID];
+			else
+				dets = TrackingObjects();
+
+			TrackingObjects t = tracker.Update(dets);
 			trackers.insert(std::end(trackers), std::begin(t), std::end(t));
 		}
 
+		// #error This requires a few more checks to catch all possible changes
 		if (trackers.size() != g_lastCnt)
-		{
 			PrintDetections(trackers);
-		}
 	}
 
 	uint8_t *GetNextFrame()
