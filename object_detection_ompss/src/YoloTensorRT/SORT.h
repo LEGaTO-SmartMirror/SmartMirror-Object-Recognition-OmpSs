@@ -195,7 +195,11 @@ private:
 		if (un < std::numeric_limits<double>::epsilon())
 			return 0;
 
-		return (double)(in / un);
+		double res = static_cast<double>(in / un);
+		if(res < 0.0) res = 0.0;
+		if(res >= 1.0) res = 1.0;
+
+		return res;
 	}
 
 private:

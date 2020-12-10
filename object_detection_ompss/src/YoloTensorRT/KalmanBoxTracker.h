@@ -144,23 +144,23 @@ public:
 private:
 	void initBBMatrix(cv::Mat &mat, const BBox &bBox)
 	{
-		mat.at<float>(0, 0) = bBox.x + (float)bBox.width / 2;
-		mat.at<float>(1, 0) = bBox.y + (float)bBox.height / 2;
+		mat.at<float>(0, 0) = bBox.x + bBox.width / 2.0f;
+		mat.at<float>(1, 0) = bBox.y + bBox.height / 2.0f;
 		mat.at<float>(2, 0) = bBox.area();
-		mat.at<float>(3, 0) = (float)bBox.width / (float)bBox.height;
+		mat.at<float>(3, 0) = bBox.width / bBox.height;
 	}
 
 	BBox getRectXysr(const float &cx, const float &cy, const float &s, const float &r) const
 	{
 		float w = std::sqrt(s * r);
 		float h = s / w;
-		float x = (cx - w / 2);
-		float y = (cy - h / 2);
+		float x = (cx - w / 2.0f);
+		float y = (cy - h / 2.0f);
 
-		if (x < 0 && cx > 0)
-			x = 0;
-		if (y < 0 && cy > 0)
-			y = 0;
+		if (x < 0.0f && cx > 0.0f)
+			x = 0.0f;
+		if (y < 0.0f && cy > 0.0f)
+			y = 0.0f;
 
 		return BBox(x, y, w, h);
 	}
