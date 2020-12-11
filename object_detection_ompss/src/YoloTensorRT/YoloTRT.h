@@ -61,97 +61,9 @@ DEFINE_EXCEPTION(YoloTRTException);
 
 class YoloTRT
 {
-	// TODO: Make this more dynamic
-	inline static const std::vector<std::string> COCO_CLASSES = {
-		"person",
-		"bicycle",
-		"car",
-		"motorbike",
-		"aeroplane",
-		"bus",
-		"train",
-		"truck",
-		"boat",
-		"traffic light",
-		"fire hydrant",
-		"stop sign",
-		"parking meter",
-		"bench",
-		"bird",
-		"cat",
-		"dog",
-		"horse",
-		"sheep",
-		"cow",
-		"elephant",
-		"bear",
-		"zebra",
-		"giraffe",
-		"backpack",
-		"umbrella",
-		"handbag",
-		"tie",
-		"suitcase",
-		"frisbee",
-		"skis",
-		"snowboard",
-		"sports ball",
-		"kite",
-		"baseball bat",
-		"baseball glove",
-		"skateboard",
-		"surfboard",
-		"tennis racket",
-		"bottle",
-		"wine glass",
-		"cup",
-		"fork",
-		"knife",
-		"spoon",
-		"bowl",
-		"banana",
-		"apple",
-		"sandwich",
-		"orange",
-		"broccoli",
-		"carrot",
-		"hot dog",
-		"pizza",
-		"donut",
-		"cake",
-		"chair",
-		"sofa",
-		"pottedplant",
-		"bed",
-		"diningtable",
-		"toilet",
-		"tvmonitor",
-		"laptop",
-		"mouse",
-		"remote",
-		"keyboard",
-		"cell phone",
-		"microwave",
-		"oven",
-		"toaster",
-		"sink",
-		"refrigerator",
-		"book",
-		"clock",
-		"vase",
-		"scissors",
-		"teddy bear",
-		"hair drier",
-		"toothbrush",
-	};
-
-	inline static const std::string ONNX_FILE   = "../data/yolov4-416.onnx";
-	inline static const std::string CONFIG_FILE = "../data/yolov4-416.cfg";
-	inline static const std::string ENGINE_FILE = "../data/yolov4-416.engine";
 	inline static const std::string INPUT_LAYER = "000_net";
 
-	inline static const bool USE_FP16    = true;
-	inline static const int32_t DLA_CORE = 0; // -1 => Do not use DLAs
+	inline static const bool USE_FP16 = true;
 
 	inline static const bool FORCE_REBUILD = false;
 
@@ -185,9 +97,9 @@ public:
 		std::string ClassName() const
 		{
 			int32_t id = static_cast<int32_t>(classID);
-			if (COCO_CLASSES.size() < id)
+			if (YoloTRT::GetClassCount() < id)
 				return string_format("INVALID_CLASSID: %s", id);
-			return COCO_CLASSES.at(id);
+			return YoloTRT::Classes().at(id);
 		}
 
 		uint32_t ClassID() const
@@ -206,16 +118,22 @@ public:
 	using YoloResults = std::vector<YoloResult>;
 
 public:
-	YoloTRT(const bool &autoLoad = false, const float &threshold = 0.3f) :
+	YoloTRT(const std::string &onnxFile, const std::string &configFile, const std::string &engineFile,
+			const std::string &classFile, const int32_t &dlaCore = 0, const bool &autoLoad = false,
+			const float &threshold = 0.3f) :
+		m_onnxFile(onnxFile),
+		m_engineFile(engineFile),
+		m_dlaCore(dlaCore),
 		m_engine(nullptr),
 		m_context(nullptr),
 		m_buffers(nullptr),
 		m_outputLayer(),
 		m_verbose(false),
 		m_imgSize(0, 0),
-		m_yoloParser(CONFIG_FILE),
+		m_yoloParser(configFile),
 		m_threshold(threshold)
 	{
+		parseClassFile(classFile);
 		if (autoLoad)
 			buildOrLoadEngine(FORCE_REBUILD);
 	}
@@ -267,13 +185,30 @@ public:
 
 	static std::size_t GetClassCount()
 	{
-		return COCO_CLASSES.size();
+		return s_classes.size();
+	}
+
+	static const std::vector<std::string> Classes()
+	{
+		return s_classes;
 	}
 
 private:
+	void parseClassFile(const std::string &classFile)
+	{
+		s_classes.clear();
+		std::ifstream f(classFile);
+		if (!f.is_open())
+			throw(YoloTRTException(string_format("Failed to load class file: %s", classFile.c_str())));
+
+		std::string line;
+		while ((std::getline(f, line)))
+			s_classes.push_back(line);
+	}
+
 	void buildOrLoadEngine(const bool &forceRebuild = false)
 	{
-		if (!forceRebuild && fileExists(ENGINE_FILE))
+		if (!forceRebuild && fileExists(m_engineFile))
 			loadEngine();
 		else
 			buildEngine();
@@ -304,14 +239,14 @@ private:
 		// if (!parser)
 		// 	throw(YoloTRTException("Failed to create Parser"));
 
-		// if (!parser->parseFromFile(ONNX_FILE.c_str(), static_cast<int>(TrtLog::Severity::kERROR)))
+		// if (!parser->parseFromFile(m_onnxFile.c_str(), static_cast<int>(TrtLog::Severity::kERROR)))
 		// 	throw(YoloTRTException("Failed to parse ONNX File"));
 
 		std::cout << "Loading serialized engine ... " << std::flush;
 
-		std::ifstream file(ENGINE_FILE, std::ios::binary);
+		std::ifstream file(m_engineFile, std::ios::binary);
 		if (!file)
-			throw(YoloTRTException(string_format("[LoadEngine] Failed to open Engine File: %s", ENGINE_FILE)));
+			throw(YoloTRTException(string_format("[LoadEngine] Failed to open Engine File: %s", m_engineFile)));
 
 		file.seekg(0, file.end);
 		std::size_t size = file.tellg();
@@ -325,10 +260,10 @@ private:
 		if (!pRuntime)
 			throw(YoloTRTException("Failed to create InferRuntime"));
 
-		if (DLA_CORE >= 0)
+		if (m_dlaCore >= 0)
 		{
-			std::cout << " - Enabling DLACore=" << DLA_CORE << " - " << std::flush;
-			pRuntime->setDLACore(DLA_CORE);
+			std::cout << " - Enabling DLACore=" << m_dlaCore << " - " << std::flush;
+			pRuntime->setDLACore(m_dlaCore);
 		}
 
 		m_engine = std::shared_ptr<nvinfer1::ICudaEngine>(pRuntime->deserializeCudaEngine(engineData.data(), size, nullptr), samplesCommon::InferDeleter());
@@ -373,7 +308,7 @@ private:
 		if (!parser)
 			throw(YoloTRTException("Failed to create Parser"));
 
-		if (!parser->parseFromFile(ONNX_FILE.c_str(), static_cast<int>(TrtLog::Severity::kERROR)))
+		if (!parser->parseFromFile(m_onnxFile.c_str(), static_cast<int>(TrtLog::Severity::kERROR)))
 			throw(YoloTRTException("Failed to parse ONNX File"));
 
 		// ==== Add Yolo Layer ====
@@ -439,7 +374,7 @@ private:
 		if (USE_FP16)
 			config->setFlag(nvinfer1::BuilderFlag::kFP16);
 
-		samplesCommon::enableDLA(builder.get(), config.get(), DLA_CORE);
+		samplesCommon::enableDLA(builder.get(), config.get(), m_dlaCore);
 
 		m_engine = std::shared_ptr<nvinfer1::ICudaEngine>(builder->buildEngineWithConfig(*network, *config), samplesCommon::InferDeleter());
 		if (!m_engine)
@@ -450,9 +385,9 @@ private:
 			throw(YoloTRTException("Failed to create Execution Context"));
 
 		std::cout << "Writing engine file to disk ... " << std::flush;
-		std::ofstream engineFile(ENGINE_FILE, std::ios::binary);
+		std::ofstream engineFile(m_engineFile, std::ios::binary);
 		if (!engineFile)
-			throw(YoloTRTException(string_format("[SaveEngine] Failed to open Engine File: %s", ENGINE_FILE)));
+			throw(YoloTRTException(string_format("[SaveEngine] Failed to open Engine File: %s", m_engineFile)));
 
 		InferUniquePtr<nvinfer1::IHostMemory> pSerializedEngine{ m_engine->serialize() };
 		if (!pSerializedEngine)
@@ -589,6 +524,10 @@ private:
 	}
 
 private:
+	std::string m_onnxFile;
+	std::string m_engineFile;
+	int32_t m_dlaCore;
+
 	std::shared_ptr<nvinfer1::ICudaEngine> m_engine;
 	InferUniquePtr<nvinfer1::IExecutionContext> m_context;
 	std::shared_ptr<samplesCommon::BufferManager> m_buffers;
@@ -599,4 +538,7 @@ private:
 	cv::Size m_imgSize;
 	YoloParser m_yoloParser;
 	float m_threshold;
+	static std::vector<std::string> s_classes;
 };
+
+std::vector<std::string> YoloTRT::s_classes = std::vector<std::string>();

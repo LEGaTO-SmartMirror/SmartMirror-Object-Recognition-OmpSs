@@ -4,18 +4,21 @@
 #include "YoloTRT.h"
 
 #include <iostream>
-
-const uint32_t CLASS_COUNT = 80;
+#include <thread>
+#include <chrono>
 
 const uint32_t WIDTH  = 416;
 const uint32_t HEIGHT = 416;
 
+const double ONE_SECOND = 1000.0;
+
 YoloTRT *g_pYolo;
 cv::VideoCapture g_cap;
 
+double g_elapsedTime;
 Timer g_timer;
 
-SORT g_sortTrackers[CLASS_COUNT];
+SORT* g_pSortTrackers;
 std::size_t g_lastCnt;
 
 #define MAX_BUFFERS 2
@@ -25,10 +28,6 @@ YoloTRT::YoloResults g_yoloResults[MAX_BUFFERS];
 
 extern "C"
 {
-	struct yoloTRT
-	{
-	};
-
 	int InitVideoStream(const char *pStr)
 	{
 		g_cap.open(pStr);
@@ -38,21 +37,24 @@ extern "C"
 			return 0;
 		}
 
+		g_elapsedTime = 0;
 		g_timer.Start();
 
 		return 1;
 	}
 
-	void InitYoloTensorRT()
+	void InitYoloTensorRT(const char* pOnnxFile, const char* pConfigFile, const char* pEngineFile, const char* pClassFile, const int32_t dlaCore)
 	{
 		// Set TensorRT log level
 		TrtLog::gLogger.setReportableSeverity(TrtLog::Severity::kWARNING);
 
-		g_pYolo = new YoloTRT(true, 0.35f);
+		g_pYolo = new YoloTRT(std::string(pOnnxFile), std::string(pConfigFile), std::string(pEngineFile), std::string(pClassFile), dlaCore, true, 0.35f);
+
+		g_pSortTrackers = new SORT[YoloTRT::GetClassCount()];
 
 		// Initialize SORT tracker for each class
-		for (SORT &s : g_sortTrackers)
-			s = SORT(5, 3);
+		for(std::size_t i = 0; i < YoloTRT::GetClassCount(); i++)
+			g_pSortTrackers[i] = SORT(5, 3);
 
 		// Set last tracking count to 0
 		g_lastCnt = 0;
@@ -70,7 +72,7 @@ extern "C"
 
 		g_lastCnt = trackers.size();
 
-		std::cout << string_format("], \"DETECTED_OBJECTS_AMOUNT\": %llu }\n", g_lastCnt);
+		std::cout << string_format("], \"DETECTED_OBJECTS_AMOUNT\": %llu }\n", g_lastCnt) << std::flush;
 	}
 
 	void ProcessDetections(const uint8_t buffer)
@@ -82,20 +84,20 @@ extern "C"
 		for (const YoloTRT::YoloResult &r : results)
 		{
 			trackingDets.try_emplace(r.ClassID(), TrackingObjects());
-			trackingDets[r.ClassID()].push_back({ { r.x, r.y, r.w, r.h }, static_cast<uint32_t>(std::abs(r.Conf() * 100)), r.ClassName() });
+			trackingDets[r.ClassID()].push_back({ { r.x, r.y, r.w, r.h }, static_cast<uint32_t>(std::round(r.Conf() * 100)), r.ClassName() });
 		}
 
 		TrackingObjects trackers;
 		TrackingObjects dets;
 
-		for (const auto &[classID, tracker] : enumerate(g_sortTrackers))
+		for(std::size_t i = 0; i < YoloTRT::GetClassCount(); i++)
 		{
-			if (trackingDets.count(classID))
-				dets = trackingDets[classID];
+			if (trackingDets.count(i))
+				dets = trackingDets[i];
 			else
 				dets = TrackingObjects();
 
-			TrackingObjects t = tracker.Update(dets);
+			TrackingObjects t = g_pSortTrackers[i].Update(dets);
 			trackers.insert(std::end(trackers), std::begin(t), std::end(t));
 		}
 
@@ -136,18 +138,33 @@ extern "C"
 	void Cleanup()
 	{
 		delete g_pYolo;
+		delete[] g_pSortTrackers;
 	}
 
-	void CheckFPS(uint32_t* pFrameCnt)
+	void CheckFPS(uint32_t* pFrameCnt, const uint64_t iteration, const float maxFPS)
 	{
-		if (g_timer.GetElapsedTimeInMilliSec() >= 1000.0)
+		g_timer.Stop();
+
+		double minFrameTime = 1000.0 / maxFPS;
+		double itrTime = g_timer.GetElapsedTimeInMilliSec();
+		g_elapsedTime += itrTime;
+
+		if(g_timer.GetElapsedTimeInMilliSec() < minFrameTime)
+			std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int32_t>(std::round(minFrameTime - itrTime))));
+
+		if (g_elapsedTime >= ONE_SECOND)
 		{
-			g_timer.Stop();
-			std::cout << "Frames: " << (*pFrameCnt) << "| Time: " << g_timer
-					  << " | Avg Time: " << g_timer.GetElapsedTimeInMilliSec() / (*pFrameCnt)
-					  << " | FPS: " << 1000 / (g_timer.GetElapsedTimeInMilliSec() / (*pFrameCnt)) << std::endl;
-			g_timer.Start();
-			(*pFrameCnt) = 0;
+			// std::cout << "Frames: " << (*pFrameCnt) << "| Time: " << g_timer
+			// 		  << " | Avg Time: " << g_elapsedTime / (*pFrameCnt)
+			// 		  << " | FPS: " << 1000 / (g_elapsedTime / (*pFrameCnt)) << std::endl;
+			
+			std::cout << string_format("{\"OBJECT_DET_FPS\": %.2f, \"Iteration\": %d, \"maxFPS\": %.2f, \"lastCurrMSec\": %.2f}\n",
+			                           1000 / (g_elapsedTime / (*pFrameCnt)), iteration, maxFPS, itrTime);
+
+			*pFrameCnt = 0;
+			g_elapsedTime = 0;
 		}
+
+		g_timer.Start();
 	}
 }
