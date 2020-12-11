@@ -38,7 +38,7 @@
 
 class SORT
 {
-	static constexpr double IOU_THRESHOLD = 0.3;
+	static constexpr double IOU_THRESHOLD = 0.5;
 
 public:
 	SORT(const uint32_t& maxAge = 1, const uint32_t& minHits = 3) :

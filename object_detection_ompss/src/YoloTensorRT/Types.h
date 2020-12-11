@@ -33,6 +33,25 @@
 using BBox   = cv::Rect2f;
 using BBoxes = std::vector<BBox>;
 
+#if !defined(THRESHOLDED_DIFF)
+#ifdef DIFF_THRESHOLD // In case THRESHOLDED_DIFF is not defined but DIFF_THRESHOLD is defined, define THRESHOLDED_DIFF
+#define THRESHOLDED_DIFF
+#else
+#define STRICT_DIFF // Else define STRICT_DIFF
+#endif
+#endif
+
+#if defined(THRESHOLDED_DIFF) && defined(STRICT_DIFF)
+#warning "Both THRESHOLDED_DIFF and STRICT_DIFF are defined, using THRESHOLDED_DIFF"
+#undef STRICT_DIFF
+#endif
+
+#ifndef DIFF_THRESHOLD
+#define DIFF_THRESHOLD 0.005
+#endif
+
+#define THRESHED_CMP(a, b, OP) (std::fabs(a - b) OP DIFF_THRESHOLD)
+
 struct TrackingObject
 {
 	TrackingObject() :
@@ -66,6 +85,23 @@ struct TrackingObject
 		lastUpdate(0),
 		face()
 	{
+	}
+
+	bool operator!=(const TrackingObject& rhs)
+	{
+		if (this->trackingID != rhs.trackingID) return false;
+		if (this->name != rhs.name) return false;
+#ifdef THRESHOLDED_DIFF
+		if (THRESHED_CMP(this->bBox.x, rhs.bBox.x, >=)) return false;
+		if (THRESHED_CMP(this->bBox.y, rhs.bBox.y, >=)) return false;
+		if (THRESHED_CMP(this->bBox.width, rhs.bBox.width, >=)) return false;
+		if (THRESHED_CMP(this->bBox.height, rhs.bBox.height, >=)) return false;
+#endif
+#ifdef STRICT_DIFF
+		return this->bBox == rhs.bBox;
+#endif
+
+		return true;
 	}
 
 	bool Valid() const

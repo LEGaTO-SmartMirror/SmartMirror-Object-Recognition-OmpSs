@@ -10,6 +10,11 @@
 #include <nanos6/cluster.h>
 #include <nanos6/debug.h>
 
+/* Threshold used when comparing two bounding boxes
+   needs to be defined before YoloTensorRTWrapper.h
+ */
+#define DIFF_THRESHOLD 0.005
+
 #include "YoloTensorRTWrapper.h"
 
 #define ITERATION_CAP 2000000000
@@ -83,6 +88,9 @@ int main(int argc, char **argv)
 	// Set last frame count to 0
 	frameCnt = 0;
 
+	// Wait for image handler to boot up
+	sleep(5);
+
 	sprintf(capStr, "shmsrc socket-path=/dev/shm/camera_small ! video/x-raw, format=BGR, width=%i, height=%i, \
 		framerate=30/1 ! queue max-size-buffers=5 leaky=2 ! videoconvert ! video/x-raw, format=BGR ! \
 		appsink drop=true",
@@ -100,6 +108,11 @@ int main(int argc, char **argv)
 	}
 
 #pragma oss taskwait
+
+	printf("{\"STATUS\": \"looping starts now\"}\n");
+	printf("{\"DETECTED_GESTURES\": []}\n");
+
+	sleep(1);
 
 	while (1)
 	{
