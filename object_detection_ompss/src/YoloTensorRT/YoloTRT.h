@@ -61,6 +61,7 @@ DEFINE_EXCEPTION(YoloTRTException);
 
 class YoloTRT
 {
+	// TODO: Make this more dynamic
 	inline static const std::vector<std::string> COCO_CLASSES = {
 		"person",
 		"bicycle",

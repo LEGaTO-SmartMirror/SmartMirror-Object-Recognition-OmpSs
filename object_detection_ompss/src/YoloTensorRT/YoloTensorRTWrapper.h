@@ -6,14 +6,16 @@
 extern "C"
 {
 #endif
+	typedef struct yoloTRT YoloTRT_t;
 
 	int InitVideoStream(const char *pStr);
 	void InitYoloTensorRT();
-	uint8_t *GetNextFrame();
-	void ProcessNextFrame(uint8_t *pData, const int32_t height, const int32_t width);
-	void ProcessDetections();
+	void GetNextFrame(uint8_t *pData);
+	void c2CvMat(uint8_t *pData, const int32_t height, const int32_t width, const uint8_t buffer);
+	void ProcessNextFrame(const uint8_t buffer);
+	void ProcessDetections(const uint8_t buffer);
 	void Cleanup();
-	void CheckFPS();
+	void CheckFPS(uint32_t *pFrameCnt);
 
 #ifdef __cplusplus
 }

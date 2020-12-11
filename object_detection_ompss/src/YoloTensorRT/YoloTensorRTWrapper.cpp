@@ -14,15 +14,21 @@ YoloTRT *g_pYolo;
 cv::VideoCapture g_cap;
 
 Timer g_timer;
-uint32_t g_frameCnt;
 
 SORT g_sortTrackers[CLASS_COUNT];
 std::size_t g_lastCnt;
 
-YoloTRT::YoloResults g_yoloResults[2];
+#define MAX_BUFFERS 2
+
+cv::Mat g_frame[MAX_BUFFERS];
+YoloTRT::YoloResults g_yoloResults[MAX_BUFFERS];
 
 extern "C"
 {
+	struct yoloTRT
+	{
+	};
+
 	int InitVideoStream(const char *pStr)
 	{
 		g_cap.open(pStr);
@@ -32,8 +38,6 @@ extern "C"
 			return 0;
 		}
 
-		// Set last frame count to 0
-		g_frameCnt = 0;
 		g_timer.Start();
 
 		return 1;
@@ -69,9 +73,9 @@ extern "C"
 		std::cout << string_format("], \"DETECTED_OBJECTS_AMOUNT\": %llu }\n", g_lastCnt);
 	}
 
-	void ProcessDetections()
+	void ProcessDetections(const uint8_t buffer)
 	{
-		const YoloTRT::YoloResults &results = g_yoloResults[g_frameCnt % 2];
+		const YoloTRT::YoloResults &results = g_yoloResults[buffer % MAX_BUFFERS];
 
 		std::map<uint32_t, TrackingObjects> trackingDets;
 
@@ -100,32 +104,33 @@ extern "C"
 			PrintDetections(trackers);
 	}
 
-	uint8_t *GetNextFrame()
+	void GetNextFrame(uint8_t *pData)
 	{
-		uint8_t *pData = nullptr;
+		if(!pData) return;
 		cv::Mat frame;
 		if (g_cap.read(frame))
 		{
 			std::size_t size = frame.total() * frame.channels();
-			pData            = new uint8_t[size];
 			cv::Mat flat     = frame.reshape(1, size);
 			std::memcpy(pData, flat.ptr(), size);
-			cv::imwrite("out1.jpg", frame);
+			// cv::imwrite("out1.jpg", frame);
 		}
-
-		return pData;
 	}
 
-	void ProcessNextFrame(uint8_t *pData, const int32_t height, const int32_t width)
+	void c2CvMat(uint8_t* pData, const int32_t height, const int32_t width, const uint8_t buffer)
 	{
 		if (pData == nullptr) return;
 
-		cv::Mat frame = cv::Mat(height, width, CV_8UC3, pData);
-		delete[] pData;
+		g_frame[buffer % MAX_BUFFERS] = cv::Mat(height, width, CV_8UC3, pData);
+	}
 
-		g_yoloResults[g_frameCnt % 2] = g_pYolo->Infer(frame);
+	void ProcessNextFrame(const uint8_t buffer)
+	{
+		// cv::Mat frame = cv::Mat(height, width, CV_8UC3, pData);
+		// cv::imwrite("out2.jpg", frame);
 
-		g_frameCnt++;
+		if(!g_frame[buffer % MAX_BUFFERS].empty())
+			g_yoloResults[buffer % MAX_BUFFERS] = g_pYolo->Infer(g_frame[buffer % MAX_BUFFERS]);
 	}
 
 	void Cleanup()
@@ -133,16 +138,16 @@ extern "C"
 		delete g_pYolo;
 	}
 
-	void CheckFPS()
+	void CheckFPS(uint32_t* pFrameCnt)
 	{
 		if (g_timer.GetElapsedTimeInMilliSec() >= 1000.0)
 		{
 			g_timer.Stop();
-			std::cout << "Frames: " << g_frameCnt << "| Time: " << g_timer
-					  << " | Avg Time: " << g_timer.GetElapsedTimeInMilliSec() / g_frameCnt
-					  << " | FPS: " << 1000 / (g_timer.GetElapsedTimeInMilliSec() / g_frameCnt) << std::endl;
+			std::cout << "Frames: " << (*pFrameCnt) << "| Time: " << g_timer
+					  << " | Avg Time: " << g_timer.GetElapsedTimeInMilliSec() / (*pFrameCnt)
+					  << " | FPS: " << 1000 / (g_timer.GetElapsedTimeInMilliSec() / (*pFrameCnt)) << std::endl;
 			g_timer.Start();
-			g_frameCnt = 0;
+			(*pFrameCnt) = 0;
 		}
 	}
 }
