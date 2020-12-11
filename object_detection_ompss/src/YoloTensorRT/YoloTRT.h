@@ -571,6 +571,7 @@ private:
 
 		for (const YoloResult &r : validResults)
 		{
+			// std::cout << r << std::endl;
 			// cv::rectangle(imgLocal, cv::Point(r.x, r.y), cv::Point(r.x + r.w, r.y + r.h), cv::Scalar(0, 255, 0));
 			// cv::putText(imgLocal, string_format("%s - %f", r.ClassName().c_str(), r.Conf()), cv::Point(r.x, r.y - 10), cv::FONT_HERSHEY_DUPLEX, 0.5, CV_RGB(255, 50, 50), 1);
 		}

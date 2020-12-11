@@ -110,6 +110,7 @@ extern "C"
 			pData            = new uint8_t[size];
 			cv::Mat flat     = frame.reshape(1, size);
 			std::memcpy(pData, flat.ptr(), size);
+			cv::imwrite("out1.jpg", frame);
 		}
 
 		return pData;

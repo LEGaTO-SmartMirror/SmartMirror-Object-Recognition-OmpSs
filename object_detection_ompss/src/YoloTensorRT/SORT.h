@@ -56,6 +56,9 @@ public:
 		BBox box;
 		BBoxes predictedBoxes;
 
+		if (m_trackers.empty() && dets.empty())
+			return TrackingObjects();
+
 		for (std::vector<KalmanBoxTracker>::iterator it = m_trackers.begin(); it != m_trackers.end();)
 		{
 			box = it->Predict();
@@ -196,8 +199,8 @@ private:
 			return 0;
 
 		double res = static_cast<double>(in / un);
-		if(res < 0.0) res = 0.0;
-		if(res >= 1.0) res = 1.0;
+		if (res < 0.0) res = 0.0;
+		if (res >= 1.0) res = 1.0;
 
 		return res;
 	}
