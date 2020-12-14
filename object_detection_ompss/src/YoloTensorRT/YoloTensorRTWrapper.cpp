@@ -63,17 +63,19 @@ extern "C"
 
 	void PrintDetections(const TrackingObjects& trackers)
 	{
-		std::cout << "{\"DETECTED_OBJECTS\": [";
+		std::stringstream str("");
+		str << "{\"DETECTED_OBJECTS\": [";
 
 		for (const TrackingObject& t : trackers)
 		{
-			std::cout << string_format("{\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", t.trackingID, t.name.c_str(), t.bBox.x, t.bBox.y, t.bBox.width, t.bBox.height);
+			str << string_format("{\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", t.trackingID, t.name.c_str(), t.bBox.x, t.bBox.y, t.bBox.width, t.bBox.height);
 			// std::cout << "ID: " << t.trackingID << " - Name: " << t.name << std::endl;
 		}
 
 		g_lastTrackings = trackers;
 
-		std::cout << string_format("], \"DETECTED_OBJECTS_AMOUNT\": %llu }\n", g_lastTrackings.size()) << std::flush;
+		str << string_format("], \"DETECTED_OBJECTS_AMOUNT\": %llu }\n", g_lastTrackings.size());
+		std::cout << str.str() << std::flush;
 	}
 
 	void ProcessDetections(const uint8_t buffer)
@@ -175,7 +177,8 @@ extern "C"
 			// 		  << " | FPS: " << 1000 / (g_elapsedTime / (*pFrameCnt)) << std::endl;
 
 			std::cout << string_format("{\"OBJECT_DET_FPS\": %.2f, \"Iteration\": %d, \"maxFPS\": %.2f, \"lastCurrMSec\": %.2f}\n",
-									   1000 / (g_elapsedTime / (*pFrameCnt)), iteration, maxFPS, itrTime);
+									   1000 / (g_elapsedTime / (*pFrameCnt)), iteration, maxFPS, itrTime)
+					  << std::flush;
 
 			*pFrameCnt    = 0;
 			g_elapsedTime = 0;

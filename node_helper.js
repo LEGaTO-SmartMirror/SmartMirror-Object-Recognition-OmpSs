@@ -8,7 +8,7 @@ module.exports = NodeHelper.create({
 
 	cApp_start: function () {
 		const self = this;
-		self.objectDet = spawn('modules/' + self.name + '/object_detection_ompss/build/start.sh',['modules/' + self.name + '/object-detection/build', self.config.image_width, self.config.image_height]);
+		self.objectDet = spawn('modules/' + self.name + '/object_detection_ompss/build/startYoloTRT.sh',['modules/' + self.name + '/object-detection/build', self.config.image_width, self.config.image_height]);
 		self.objectDet.stdout.on('data', (data) => {
 
 			var data_chunks = `${data}`.split('\n');
@@ -23,7 +23,7 @@ module.exports = NodeHelper.create({
 						//console.log("[" + self.name + "] Gestures detected : " + parsed_message);
 						self.sendSocketNotification('DETECTED_OBJECTS', parsed_message);
 					}else if (parsed_message.hasOwnProperty('OBJECT_DET_FPS')){
-						//console.log("[" + self.name + "] " + JSON.stringify(parsed_message));
+						console.log("[" + self.name + "] " + JSON.stringify(parsed_message));
 						self.sendSocketNotification('OBJECT_DET_FPS', parsed_message.OBJECT_DET_FPS);
 					}else if (parsed_message.hasOwnProperty('STATUS')){
 						console.log("[" + self.name + "] status received: " + JSON.stringify(parsed_message));
@@ -34,6 +34,7 @@ module.exports = NodeHelper.create({
 						//console.log("[" + self.name + "] json parse error");
 					} else if (err.message.includes("Unexpected end of JSON input")) {
 						console.log("[" + self.name + "] Unexpected end of JSON input")
+						//console.log(chunk);
 					} else {
 						console.log(err.message)
 					}

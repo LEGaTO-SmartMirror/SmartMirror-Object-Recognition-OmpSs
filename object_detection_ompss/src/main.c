@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include "common.h"
+#include "InitTensorRTParser.h"
 
 
 #include <nanos6/debug.h>
@@ -16,8 +17,10 @@
 #define IMAGE_WIDTH	416
 #define IMAGE_HEIGHT	416
 #define INSDATALENGTH 	(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS)
-#define CFG_FILE	"../data/enet-coco.cfg"
-#define WEIGHT_FILE	"../data/enetb0-coco_final.weights"
+#define CFG_FILE	"../data/yolov4.cfg"
+#define WEIGHT_FILE	"../data/yolov4.weights"
+//#define CFG_FILE	"../data/enet-coco.cfg"
+//#define WEIGHT_FILE	"../data/enetb0-coco_final.weights"
 #define NAMES_FILE	"../data/coco.names"
 #define PRINT_THRESHOLD 0.005
 
@@ -108,7 +111,10 @@ int main(int argc, char** argv)
 	int* nBoxesTask1;
 
 	/*  ========= Init starts here =========  */
-	
+
+	if(!InitTensorRTParser())
+		printf("Failed to initialize TensorRT Parser\n");
+
 	/**  =====  count how many classes there are! =====  */
 	ppNames = get_labels(NAMES_FILE); // memory issue NO!
 	while (ppNames[classes] != NULL)
@@ -138,6 +144,10 @@ int main(int argc, char** argv)
 	#pragma oss task out(nBoxesLastLoop, pTrackerIDLastLoop, pObjectTypLastLoop, pBBoxLastLoop, pDets0, pDets1, nBoxesTask0, nBoxesTask1, pNet, pIn1S1,pIn0S1) \
 	in(classes) node(1) label("init_node_1")
 	{
+
+		if(!InitTensorRTParser())
+			printf("Failed to initialize TensorRT Parser\n");
+
 		printf("{\"STATUS\": \"initilize everything on node 1\"}\n");
 		pNet = load_network_custom(CFG_FILE, WEIGHT_FILE, 1, 1);
 
