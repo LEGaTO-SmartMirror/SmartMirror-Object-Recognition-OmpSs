@@ -66,9 +66,11 @@ extern "C"
 		std::stringstream str("");
 		str << "{\"DETECTED_OBJECTS\": [";
 
-		for (const TrackingObject& t : trackers)
+		for (const auto& [i, t] : enumerate(trackers))
 		{
 			str << string_format("{\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", t.trackingID, t.name.c_str(), t.bBox.x, t.bBox.y, t.bBox.width, t.bBox.height);
+			// Prevent a trailing ',' for the last element
+			if(i + 1 < trackers.size()) str << ", ";
 			// std::cout << "ID: " << t.trackingID << " - Name: " << t.name << std::endl;
 		}
 
@@ -119,7 +121,6 @@ extern "C"
 			}
 		}
 
-		// #error This requires a few more checks to catch all possible changes
 		if (changed)
 			PrintDetections(trackers);
 	}
@@ -165,19 +166,22 @@ extern "C"
 
 		double minFrameTime = 1000.0 / maxFPS;
 		double itrTime      = g_timer.GetElapsedTimeInMilliSec();
+		double fps;
 		g_elapsedTime += itrTime;
+		fps = 1000 / (g_elapsedTime / (*pFrameCnt));
 
 		if (g_timer.GetElapsedTimeInMilliSec() < minFrameTime)
 			std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int32_t>(std::round(minFrameTime - itrTime))));
 
 		if (g_elapsedTime >= ONE_SECOND)
 		{
+			if (fps > maxFPS) fps = maxFPS;
 			// std::cout << "Frames: " << (*pFrameCnt) << "| Time: " << g_timer
 			// 		  << " | Avg Time: " << g_elapsedTime / (*pFrameCnt)
 			// 		  << " | FPS: " << 1000 / (g_elapsedTime / (*pFrameCnt)) << std::endl;
 
 			std::cout << string_format("{\"OBJECT_DET_FPS\": %.2f, \"Iteration\": %d, \"maxFPS\": %.2f, \"lastCurrMSec\": %.2f}\n",
-									   1000 / (g_elapsedTime / (*pFrameCnt)), iteration, maxFPS, itrTime)
+									   fps, iteration, maxFPS, itrTime)
 					  << std::flush;
 
 			*pFrameCnt    = 0;

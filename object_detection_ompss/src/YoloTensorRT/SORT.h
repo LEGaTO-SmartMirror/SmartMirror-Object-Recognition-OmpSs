@@ -151,7 +151,7 @@ public:
 		// create and initialise new trackers for unmatched detections
 		for (auto umd : unmatchedDetections)
 		{
-			KalmanBoxTracker tracker = KalmanBoxTracker(dets[umd].bBox, dets[detIdx].name);
+			KalmanBoxTracker tracker = KalmanBoxTracker(dets[umd].bBox, dets[umd].name);
 			m_trackers.push_back(tracker);
 		}
 
