@@ -2,5 +2,7 @@
 *.pyc
 
 object_detection_ompss/build/*.o
+object_detection_ompss/build/*.bin
+object_detection_ompss/build/*.jpg
 object_detection_ompss/data/*.weights
 object_detection_ompss/data/*.mp4
