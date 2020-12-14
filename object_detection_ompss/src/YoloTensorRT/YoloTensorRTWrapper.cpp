@@ -70,8 +70,7 @@ extern "C"
 		{
 			str << string_format("{\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", t.trackingID, t.name.c_str(), t.bBox.x, t.bBox.y, t.bBox.width, t.bBox.height);
 			// Prevent a trailing ',' for the last element
-			if(i + 1 < trackers.size()) str << ", ";
-			// std::cout << "ID: " << t.trackingID << " - Name: " << t.name << std::endl;
+			if (i + 1 < trackers.size()) str << ", ";
 		}
 
 		g_lastTrackings = trackers;
