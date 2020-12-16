@@ -29,6 +29,16 @@ YoloTRT::YoloResults g_yoloResults[MAX_BUFFERS];
 
 extern "C"
 {
+	BBox ToCenter(const BBox& bBox)
+	{
+		// x_y = center
+		float h = bBox.height;
+		float w = bBox.width;
+		float x = bBox.x + (w / 2);
+		float y = bBox.y + (h / 2);
+		return BBox(x, y, w, h);
+	}
+
 	int InitVideoStream(const char* pStr)
 	{
 		g_cap.open(pStr);
@@ -68,7 +78,8 @@ extern "C"
 
 		for (const auto& [i, t] : enumerate(trackers))
 		{
-			str << string_format("{\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", t.trackingID, t.name.c_str(), t.bBox.x, t.bBox.y, t.bBox.width, t.bBox.height);
+			BBox centerBox = ToCenter(t.bBox);
+			str << string_format("{\"TrackID\": %i, \"name\": \"%s\", \"center\": [%.5f,%.5f], \"w_h\": [%.5f,%.5f]}", t.trackingID, t.name.c_str(), centerBox.x, centerBox.y, centerBox.width, centerBox.height);
 			// Prevent a trailing ',' for the last element
 			if (i + 1 < trackers.size()) str << ", ";
 		}

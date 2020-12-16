@@ -89,19 +89,19 @@ struct TrackingObject
 
 	bool operator!=(const TrackingObject& rhs)
 	{
-		if (this->trackingID != rhs.trackingID) return false;
-		if (this->name != rhs.name) return false;
+		if (this->trackingID != rhs.trackingID) return true;
+		if (this->name != rhs.name) return true;
 #ifdef THRESHOLDED_DIFF
-		if (THRESHED_CMP(this->bBox.x, rhs.bBox.x, >=)) return false;
-		if (THRESHED_CMP(this->bBox.y, rhs.bBox.y, >=)) return false;
-		if (THRESHED_CMP(this->bBox.width, rhs.bBox.width, >=)) return false;
-		if (THRESHED_CMP(this->bBox.height, rhs.bBox.height, >=)) return false;
+		if (THRESHED_CMP(this->bBox.x, rhs.bBox.x, >=)) return true;
+		if (THRESHED_CMP(this->bBox.y, rhs.bBox.y, >=)) return true;
+		if (THRESHED_CMP(this->bBox.width, rhs.bBox.width, >=)) return true;
+		if (THRESHED_CMP(this->bBox.height, rhs.bBox.height, >=)) return true;
 #endif
 #ifdef STRICT_DIFF
-		return this->bBox == rhs.bBox;
+		return this->bBox != rhs.bBox;
 #endif
 
-		return true;
+		return false;
 	}
 
 	bool Valid() const

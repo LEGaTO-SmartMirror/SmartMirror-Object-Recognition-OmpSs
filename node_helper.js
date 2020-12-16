@@ -8,7 +8,7 @@ module.exports = NodeHelper.create({
 
 cApp_start: function () {
 	const self = this;
-	self.objectDet = spawn('modules/' + self.name + '/object_detection_ompss/build/startYoloTRT.sh',['modules/' + self.name + '/object-detection/build', self.config.image_width, self.config.image_height]);
+	self.objectDet = spawn('modules/' + self.name + '/object_detection_ompss/build/startYoloTRT.sh', ['modules/' + self.name + '/object-detection/build', self.config.image_width, self.config.image_height]);
 	self.objectDet.stdout.on('data', (data) => {
 
 	var data_chunks = `${data}`.split('\n');
@@ -55,10 +55,7 @@ cApp_start: function () {
 		if (code !== 0){
 			setTimeout(() => {self.cApp_start();}, 5)
 		}				
-	console.log("object det:");
-	console.log("code: " + code);
-	console.log("signal: " + signal);
-
+	console.log("object det: " + "code=" + code + " signal=" + signal);
 	});
 
 },
